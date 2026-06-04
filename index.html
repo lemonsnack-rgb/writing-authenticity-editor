@@ -28,6 +28,7 @@ body{background:#f3f4f6;margin:0;font-family:'Segoe UI',sans-serif}
 @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 @keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
 .shake{animation:shake .4s ease}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
 .fade-in{animation:fadeIn .4s ease-out}
 .stat-card{transition:transform .2s}
 .stat-card:hover{transform:translateY(-2px)}
@@ -441,6 +442,7 @@ function App() {
 
 function Certificate({ result, onBack }) {
   const [hovered, setHovered] = useState(null);
+  const [showReplay, setShowReplay] = useState(false);
   const { blocks, counts, total, score, grade, gradeLabel, avgCPM, deleteCount, pgStats, pasteEditInserts, pasteDeleteCount } = result;
   const gc = grade==='excellent'?'grade-excellent':grade==='normal'?'grade-normal':'grade-reject';
 
@@ -578,8 +580,89 @@ function Certificate({ result, onBack }) {
         </div>
       </div>
 
-      <div className="text-center">
-        <button onClick={onBack} className="px-8 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-colors shadow-md">에디터로 돌아가기</button>
+      <div className="text-center flex gap-3 justify-center">
+        <button onClick={()=>setShowReplay(true)} className="px-8 py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-colors shadow-md" style={{color:'#ffffff',fontWeight:'700'}}>▶ 작성과정 재생</button>
+        <button onClick={onBack} className="px-8 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-colors shadow-md" style={{color:'#ffffff',fontWeight:'700'}}>에디터로 돌아가기</button>
+      </div>
+      {showReplay && <Replay blocks={blocks} onClose={()=>setShowReplay(false)} />}
+    </div>
+  );
+}
+
+function Replay({ blocks, onClose }) {
+  const [step, setStep] = useState(0);   // 현재까지 표시할 블록 인덱스
+  const [charStep, setCharStep] = useState(0); // 현재 블록 내 표시 글자 수
+  const [running, setRunning] = useState(false);
+  const timerRef = useRef(null);
+
+  const dtClass = dt => ({typing:'hl-typing','paste-clean':'hl-paste','paste-edited':'hl-paste-edited','insert-in-paste':'hl-insert-in-paste',citation:'hl-citation'})[dt]||'';
+  const dtLabel = dt => ({typing:'타이핑','paste-clean':'붙여넣기','paste-edited':'수정된 복붙','insert-in-paste':'복붙 내 입력',citation:'인용'})[dt]||dt;
+
+  const tick = () => {
+    setCharStep(prev => {
+      const curBlock = blocks[step] || null;
+      if (!curBlock) { setRunning(false); return prev; }
+      const isTyping = curBlock.dt === 'typing' || curBlock.dt === 'insert-in-paste';
+      const nextChar = prev + (isTyping ? 1 : curBlock.text.length);
+      if (nextChar >= curBlock.text.length) {
+        setStep(s => {
+          const ns = s + 1;
+          if (ns >= blocks.length) setRunning(false);
+          return ns;
+        });
+        return 0;
+      }
+      return nextChar;
+    });
+  };
+
+  useEffect(() => {
+    if (!running) { clearInterval(timerRef.current); return; }
+    const curBlock = blocks[step];
+    if (!curBlock) { setRunning(false); return; }
+    const isTyping = curBlock.dt === 'typing' || curBlock.dt === 'insert-in-paste';
+    timerRef.current = setInterval(tick, isTyping ? 40 : 300);
+    return () => clearInterval(timerRef.current);
+  }, [running, step]);
+
+  const handleStart = () => { setStep(0); setCharStep(0); setRunning(true); };
+  const handleStop = () => setRunning(false);
+
+  // 렌더링: step 이전 블록은 전체 표시, 현재 블록은 charStep까지만
+  const rendered = blocks.slice(0, step).map((b, i) => (
+    <span key={i} className={dtClass(b.dt)} title={dtLabel(b.dt)}>{b.text}</span>
+  ));
+  if (step < blocks.length) {
+    const cur = blocks[step];
+    rendered.push(
+      <span key="cur" className={dtClass(cur.dt)} title={dtLabel(cur.dt)}>{cur.text.slice(0, charStep)}<span style={{borderLeft:'2px solid #6366f1',animation:'blink 1s step-end infinite'}}></span></span>
+    );
+  }
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:100}} onClick={e=>{if(e.target===e.currentTarget)onClose()}}>
+      <div style={{background:'#fff',borderRadius:'16px',padding:'32px',width:'90%',maxWidth:'700px',maxHeight:'80vh',display:'flex',flexDirection:'column',gap:'16px'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <h3 style={{margin:0,fontSize:'18px',fontWeight:'700',color:'#1f2937'}}>작성과정 재생</h3>
+          <button onClick={onClose} style={{background:'none',border:'none',fontSize:'22px',cursor:'pointer',color:'#6b7280',lineHeight:1}}>✕</button>
+        </div>
+        <div style={{display:'flex',gap:'8px'}}>
+          <button onClick={handleStart} style={{padding:'8px 20px',background:'#059669',color:'#fff',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'14px',cursor:'pointer'}}>⏮ 처음부터</button>
+          {running
+            ? <button onClick={handleStop} style={{padding:'8px 20px',background:'#dc2626',color:'#fff',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'14px',cursor:'pointer'}}>⏸ 일시정지</button>
+            : <button onClick={()=>setRunning(true)} disabled={step>=blocks.length} style={{padding:'8px 20px',background: step>=blocks.length?'#9ca3af':'#2563eb',color:'#fff',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'14px',cursor: step>=blocks.length?'not-allowed':'pointer'}}>▶ 재생</button>
+          }
+        </div>
+        <div style={{flex:1,overflowY:'auto',padding:'16px',background:'#f9fafb',borderRadius:'8px',minHeight:'200px',fontSize:'15px',lineHeight:'2',whiteSpace:'pre-wrap',wordBreak:'break-all'}}>
+          {rendered.length > 0 ? rendered : <span style={{color:'#9ca3af'}}>재생 버튼을 눌러 시작하세요</span>}
+        </div>
+        <div style={{display:'flex',gap:'12px',flexWrap:'wrap',fontSize:'12px',color:'#6b7280'}}>
+          <span><span style={{display:'inline-block',width:'10px',height:'10px',borderRadius:'50%',background:'#22c55e',marginRight:'4px'}}></span>타이핑</span>
+          <span><span style={{display:'inline-block',width:'10px',height:'10px',borderRadius:'50%',background:'#ef4444',marginRight:'4px'}}></span>붙여넣기</span>
+          <span><span style={{display:'inline-block',width:'10px',height:'10px',borderRadius:'50%',background:'#f97316',marginRight:'4px'}}></span>수정된 복붙</span>
+          <span><span style={{display:'inline-block',width:'10px',height:'10px',borderRadius:'50%',background:'#3b82f6',marginRight:'4px'}}></span>복붙 내 입력</span>
+          <span><span style={{display:'inline-block',width:'10px',height:'10px',borderRadius:'50%',background:'#eab308',marginRight:'4px'}}></span>인용</span>
+        </div>
       </div>
     </div>
   );
