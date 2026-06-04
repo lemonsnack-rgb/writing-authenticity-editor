@@ -369,15 +369,15 @@ function App() {
   const [result, setResult] = useState(null);
   const editorRef = useRef(null);
 
-  if (!loggedIn) return <Login onLogin={() => setLoggedIn(true)} />;
-
   useEffect(() => {
     const fn = () => tick(n => n+1);
     S.listeners.push(fn);
     return () => { S.listeners = S.listeners.filter(l => l !== fn); };
   }, []);
 
-  useEffect(() => { attachEvents(editorRef.current); }, [showCert]);
+  useEffect(() => { if (loggedIn) attachEvents(editorRef.current); }, [showCert, loggedIn]);
+
+  if (!loggedIn) return <Login onLogin={() => setLoggedIn(true)} />;
 
   const handleAnalyze = () => {
     const r = runAnalysis();
