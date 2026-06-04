@@ -581,8 +581,8 @@ function Certificate({ result, onBack }) {
       </div>
 
       <div className="text-center flex gap-3 justify-center">
-        <button onClick={()=>setShowReplay(true)} className="px-8 py-3 bg-emerald-600 text-white rounded-lg font-semibold hover:bg-emerald-700 transition-colors shadow-md" style={{color:'#ffffff',fontWeight:'700'}}>▶ 작성과정 재생</button>
-        <button onClick={onBack} className="px-8 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-colors shadow-md" style={{color:'#ffffff',fontWeight:'700'}}>에디터로 돌아가기</button>
+        <button onClick={()=>setShowReplay(true)} style={{padding:'12px 32px',background:'#059669',color:'#ffffff',fontWeight:'700',fontSize:'15px',border:'none',borderRadius:'8px',cursor:'pointer',boxShadow:'0 4px 12px rgba(5,150,105,0.4)',transition:'background .2s'}} onMouseOver={e=>e.currentTarget.style.background='#047857'} onMouseOut={e=>e.currentTarget.style.background='#059669'}>▶ 작성과정 재생</button>
+        <button onClick={onBack} style={{padding:'12px 32px',background:'#4f46e5',color:'#ffffff',fontWeight:'700',fontSize:'15px',border:'none',borderRadius:'8px',cursor:'pointer',boxShadow:'0 4px 12px rgba(79,70,229,0.4)',transition:'background .2s'}} onMouseOver={e=>e.currentTarget.style.background='#4338ca'} onMouseOut={e=>e.currentTarget.style.background='#4f46e5'}>에디터로 돌아가기</button>
       </div>
       {showReplay && <Replay blocks={blocks} onClose={()=>setShowReplay(false)} />}
     </div>
