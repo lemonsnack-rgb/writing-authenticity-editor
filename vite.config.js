@@ -6,9 +6,9 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        landing: 'landing.html',
-        index: 'index.html',
-        'index-jp': 'index-jp.html',
+        main: 'index.html',
+        ko: 'ko.html',
+        ja: 'ja.html',
         admin: 'admin.html',
         'admin-jp': 'admin-jp.html',
       },
