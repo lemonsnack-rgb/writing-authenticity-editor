@@ -30,7 +30,7 @@ body{background:#f3f4f6;margin:0;font-family:'Segoe UI',sans-serif}
 .stat-card{transition:transform .2s}
 .stat-card:hover{transform:translateY(-2px)}
 /* 재생 플레이어 */
-.replay-area{min-height:200px;padding:16px;font-size:16px;line-height:1.8;border:2px solid #e5e7eb;border-radius:8px;background:#fff;white-space:pre-wrap;word-wrap:break-word;position:relative}
+.replay-area{min-height:200px;padding:16px;font-size:16px;line-height:1.8;border:2px solid #e5e7eb;border-radius:8px;background:#fff;white-space:pre-wrap;word-wrap:break-word;word-break:break-all;overflow-wrap:break-word;position:relative}
 .cursor-blink{display:inline-block;width:2px;height:1.2em;background:#6366f1;vertical-align:text-bottom;animation:blink 1s step-end infinite}
 @keyframes blink{50%{opacity:0}}
 .paste-flash{animation:pasteFlash .5s ease-out}
@@ -574,7 +574,7 @@ function Certificate({result,onBack,onReplay,hasOpLog}){
       </div>
       <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
         <div className="text-sm font-semibold text-gray-600 mb-3">본문 분석 <span className="text-xs text-gray-400 font-normal">(마우스를 올려 상세 근거 확인)</span></div>
-        <div className="text-base leading-8 text-gray-800" style={{whiteSpace:'pre-wrap'}}>
+        <div className="text-base leading-8 text-gray-800" style={{whiteSpace:'pre-wrap',wordBreak:'break-all',overflowWrap:'break-word'}}>
           {blocks.map((b,i)=>(<span key={i} className={dtC(b.dt)+' tt'} onMouseEnter={()=>setHovered(i)} onMouseLeave={()=>setHovered(null)}>{b.text}{hovered===i&&<span className="tt-box"><strong>{dtL(b.dt)}</strong><br/>근거: {b.evidence}<br/>구간: {b.text.length}자 ({b.start}~{b.end})</span>}</span>))}
         </div>
       </div>
