@@ -1,0 +1,38 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.editor-area{min-height:250px;padding:16px;font-size:16px;line-height:1.8;border:2px solid #d1d5db;border-radius:8px;background:#fff;outline:none;white-space:pre-wrap;word-wrap:break-word}
+.editor-area:focus{border-color:#6366f1;box-shadow:0 0 0 3px rgba(99,102,241,.1)}
+.editor-area:empty::before{content:attr(data-placeholder);color:#9ca3af;pointer-events:none}
+.tt{position:relative;display:inline;cursor:pointer}
+.tt-box{position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:#1f2937;color:#fff;padding:10px 14px;border-radius:8px;font-size:12px;line-height:1.5;white-space:normal;min-width:240px;max-width:380px;z-index:50;pointer-events:none;box-shadow:0 4px 12px rgba(0,0,0,.3)}
+.tt-box::after{content:'';position:absolute;top:100%;left:50%;transform:translateX(-50%);border:6px solid transparent;border-top-color:#1f2937}
+.hl-typing{border-bottom:2px solid #22c55e}
+.hl-paste{background:rgba(239,68,68,.18)}
+.hl-paste-edited{background:rgba(249,115,22,.18)}
+.hl-insert-in-paste{background:rgba(59,130,246,.15);border-bottom:2px solid #3b82f6}
+.hl-citation{background:rgba(234,179,8,.22)}
+.grade-excellent{background:linear-gradient(135deg,#22c55e,#16a34a)}
+.grade-normal{background:linear-gradient(135deg,#eab308,#ca8a04)}
+.grade-reject{background:linear-gradient(135deg,#ef4444,#dc2626)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.fade-in{animation:fadeIn .4s ease-out}
+.stat-card{transition:transform .2s}
+.stat-card:hover{transform:translateY(-2px)}
+.replay-area{min-height:200px;padding:16px;font-size:16px;line-height:1.8;border:2px solid #e5e7eb;border-radius:8px;background:#fff;white-space:pre-wrap;word-wrap:break-word;word-break:break-all;overflow-wrap:break-word;position:relative}
+.cursor-blink{display:inline-block;width:2px;height:1.2em;background:#6366f1;vertical-align:text-bottom;animation:blink 1s step-end infinite}
+@keyframes blink{50%{opacity:0}}
+.paste-flash{animation:pasteFlash .5s ease-out}
+@keyframes pasteFlash{0%{background:rgba(239,68,68,.4)}100%{background:transparent}}
+.replay-controls{display:flex;align-items:center;gap:12px;padding:12px 0}
+.speed-btn{padding:4px 10px;border-radius:6px;border:1px solid #d1d5db;background:#fff;cursor:pointer;font-size:13px;transition:all .15s}
+.speed-btn:hover{background:#f3f4f6}
+.speed-btn.active{background:#6366f1;color:#fff;border-color:#6366f1}
+.progress-track{flex:1;height:6px;background:#e5e7eb;border-radius:3px;cursor:pointer;position:relative}
+.progress-fill{height:100%;background:#6366f1;border-radius:3px;transition:width .1s linear}
+.op-tag{display:inline-block;font-size:10px;padding:1px 6px;border-radius:4px;margin-left:4px;font-weight:600}
+.modal-overlay{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center}
+.modal-backdrop{position:absolute;inset:0;background:rgba(0,0,0,0.5)}
+.modal-content{position:relative;width:90%;max-width:800px;max-height:90vh;overflow:auto;background:#f3f4f6;border-radius:16px;box-shadow:0 25px 50px rgba(0,0,0,0.25);padding:24px}
+.modal-close{position:absolute;top:12px;right:16px;background:none;border:none;font-size:24px;cursor:pointer;color:#6b7280;line-height:1}
