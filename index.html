@@ -142,9 +142,26 @@ function analyzeHeuristics(opLog){
   }
   const nlRatio=totalOps>0?backJumps/totalOps:0;
   const nlScore=Math.min(100,Math.round(nlRatio*500));
-  // (b) 사고 정지 구간 — 2~15초 공백
+  // (b) 사고 정지 구간 — 멈춤 + 직후 행동 연계 검증
   let pauses=0;
-  for(let i=1;i<opLog.length;i++){const g=opLog[i].timestamp-opLog[i-1].timestamp;if(g>=2000&&g<15000)pauses++}
+  for(let i=1;i<opLog.length;i++){
+    const g=opLog[i].timestamp-opLog[i-1].timestamp;
+    if(g<2000||g>=15000)continue;
+    if(opLog[i].type==='paste'||opLog[i-1].type==='paste')continue;
+    // 직전 커서 끝 위치
+    const prevEnd=opLog[i-1].pos+opLog[i-1].inserted.length;
+    // 직후 3개 오퍼레이션 내에서 역방향 이동 또는 내용 수정이 있는지 검사
+    let valid=false;
+    let checkEnd=prevEnd;
+    for(let j=i;j<Math.min(i+3,opLog.length);j++){
+      const op=opLog[j];
+      if(op.pos<checkEnd-1){valid=true;break}
+      if(op.deleted.length>=3){valid=true;break}
+      if(op.deleted.length>0&&op.inserted.length>=2){valid=true;break}
+      checkEnd=op.pos+op.inserted.length;
+    }
+    if(valid)pauses++;
+  }
   const totalTime=opLog[opLog.length-1].timestamp-opLog[0].timestamp;
   const pauseRate=totalTime>0?(pauses*3000)/totalTime:0;
   const thScore=Math.min(100,Math.round(pauseRate*200));
@@ -155,7 +172,7 @@ function analyzeHeuristics(opLog){
   const behaviorScore=Math.round(nlScore*0.4+thScore*0.35+eqScore*0.25);
   return{
     nonlinear:{score:nlScore,detail:'커서 역방향 이동 '+backJumps+'회/'+totalOps+'회 (비선형 편집)'},
-    thinking:{score:thScore,detail:'사고 정지 '+pauses+'회 감지 (2~15초 공백)'},
+    thinking:{score:thScore,detail:'유효 사고 정지 '+pauses+'회 (멈춤 후 수정·역방향 이동 동반)'},
     editQuality:{score:eqScore,detail:'오타수정 '+typo+'회, 내용수정 '+content+'회'},
     behaviorScore,
   };
@@ -538,7 +555,7 @@ function Certificate({result,onBack,onReplay,hasOpLog}){
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {[
             {label:'비선형 편집',icon:'↩',data:heuristics.nonlinear,desc:'앞부분으로 돌아가 수정하는 행위. 옮겨쓰기는 순방향 진행.',weight:'40%'},
-            {label:'사고 정지',icon:'⏸',data:heuristics.thinking,desc:'2~15초 공백. 생각하며 쓸 때 자연스럽게 발생.',weight:'35%'},
+            {label:'사고 정지',icon:'⏸',data:heuristics.thinking,desc:'멈춤 후 역방향 이동 또는 내용 수정이 동반된 경우만 인정.',weight:'35%'},
             {label:'수정 패턴 질',icon:'✎',data:heuristics.editQuality,desc:'단순 오타 수정 vs 내용 수정 비율. 내용 수정이 많을수록 높음.',weight:'25%'},
           ].map((item,i)=>(
             <div key={i} className="border rounded-lg p-3">
