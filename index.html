@@ -42,16 +42,6 @@ body{background:#f3f4f6;margin:0;font-family:'Segoe UI',sans-serif}
 .progress-track{flex:1;height:6px;background:#e5e7eb;border-radius:3px;cursor:pointer;position:relative}
 .progress-fill{height:100%;background:#6366f1;border-radius:3px;transition:width .1s linear}
 .op-tag{display:inline-block;font-size:10px;padding:1px 6px;border-radius:4px;margin-left:4px;font-weight:600}
-/* 로그인 */
-.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#eef2ff 0%,#f0fdf4 100%)}
-.login-card{background:#fff;border-radius:16px;padding:48px 40px;width:100%;max-width:400px;box-shadow:0 8px 32px rgba(99,102,241,.12);animation:fadeIn .4s ease-out}
-.login-logo{width:56px;height:56px;background:linear-gradient(135deg,#6366f1,#4f46e5);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px}
-.login-input{width:100%;padding:12px 16px;border:2px solid #e5e7eb;border-radius:8px;font-size:15px;outline:none;transition:border-color .2s;box-sizing:border-box}
-.login-input:focus{border-color:#6366f1;box-shadow:0 0 0 3px rgba(99,102,241,.1)}
-.login-btn{width:100%;padding:13px;background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;border:none;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer;transition:opacity .2s;margin-top:8px}
-.login-btn:hover{opacity:.9}
-.login-btn:active{opacity:.8}
-.login-err{color:#ef4444;font-size:13px;text-align:center;margin-top:8px;min-height:20px}
 .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#eef2ff 0%,#f0fdf4 100%)}
 .login-card{background:#fff;border-radius:16px;padding:48px 40px;width:100%;max-width:400px;box-shadow:0 8px 32px rgba(99,102,241,.12);animation:fadeIn .4s ease-out}
 .login-logo{width:56px;height:56px;background:linear-gradient(135deg,#6366f1,#4f46e5);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px}
@@ -135,6 +125,8 @@ function attachEvents(el){
     }
     // ★ 로그 기록
     S.opLog.push({type:logType,pos:d.pos,deleted:d.deleted,inserted:d.inserted,timestamp:now});
+    // desync 방지: splice 후 길이 불일치 시 보정
+    if(S.charMeta.length!==cur.length){while(S.charMeta.length>cur.length)S.charMeta.pop();while(S.charMeta.length<cur.length)S.charMeta.push({origin:'typing',pasteId:null,timestamp:now})}
     S.prevText=cur;notify();
   });
 }
@@ -174,7 +166,13 @@ function runAnalysis(){
   const el=document.querySelector('.editor-area');if(!el)return null;
   const text=el.textContent;const meta=S.charMeta;
   if(!text.length||!meta.length)return null;
-  if(text.length!==meta.length)return null;
+  // desync 자동 복구: charMeta 길이를 텍스트에 맞춤
+  if(text.length!==meta.length){
+    console.warn('charMeta desync 복구:',meta.length,'→',text.length);
+    while(S.charMeta.length>text.length)S.charMeta.pop();
+    while(S.charMeta.length<text.length)S.charMeta.push({origin:'typing',pasteId:null,timestamp:Date.now()});
+    S.prevText=text;
+  }
   const pgS={};
   S.pasteEvents.forEach(pe=>{const rem=meta.filter(m=>m.pasteId===pe.id&&m.origin==='paste').length;const ins=meta.filter(m=>m.pasteId===pe.id&&m.origin==='typed-in-paste').length;const del=pe.originalText.length-rem;pgS[pe.id]={originalLen:pe.originalText.length,remaining:rem,inserted:ins,deleted:del,wasEdited:ins>0||del>0,originalText:pe.originalText}});
   const citIds=new Set();
