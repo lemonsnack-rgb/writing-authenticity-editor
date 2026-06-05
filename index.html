@@ -11,7 +11,7 @@
 <style>
 *{box-sizing:border-box}
 body{background:#f3f4f6;margin:0;font-family:'Segoe UI',sans-serif}
-.editor-area{min-height:300px;padding:16px;font-size:16px;line-height:1.8;border:2px solid #d1d5db;border-radius:8px;background:#fff;outline:none;white-space:pre-wrap;word-wrap:break-word}
+.editor-area{min-height:250px;padding:16px;font-size:16px;line-height:1.8;border:2px solid #d1d5db;border-radius:8px;background:#fff;outline:none;white-space:pre-wrap;word-wrap:break-word}
 .editor-area:focus{border-color:#6366f1;box-shadow:0 0 0 3px rgba(99,102,241,.1)}
 .editor-area:empty::before{content:'여기에 글을 작성하세요. 타이핑과 붙여넣기가 자동으로 구분됩니다...';color:#9ca3af;pointer-events:none}
 .tt{position:relative;display:inline;cursor:pointer}
@@ -26,464 +26,413 @@ body{background:#f3f4f6;margin:0;font-family:'Segoe UI',sans-serif}
 .grade-normal{background:linear-gradient(135deg,#eab308,#ca8a04)}
 .grade-reject{background:linear-gradient(135deg,#ef4444,#dc2626)}
 @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
-@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
-.shake{animation:shake .4s ease}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
 .fade-in{animation:fadeIn .4s ease-out}
 .stat-card{transition:transform .2s}
 .stat-card:hover{transform:translateY(-2px)}
+/* 재생 플레이어 */
+.replay-area{min-height:200px;padding:16px;font-size:16px;line-height:1.8;border:2px solid #e5e7eb;border-radius:8px;background:#fff;white-space:pre-wrap;word-wrap:break-word;position:relative}
+.cursor-blink{display:inline-block;width:2px;height:1.2em;background:#6366f1;vertical-align:text-bottom;animation:blink 1s step-end infinite}
+@keyframes blink{50%{opacity:0}}
+.paste-flash{animation:pasteFlash .5s ease-out}
+@keyframes pasteFlash{0%{background:rgba(239,68,68,.4)}100%{background:transparent}}
+.replay-controls{display:flex;align-items:center;gap:12px;padding:12px 0}
+.speed-btn{padding:4px 10px;border-radius:6px;border:1px solid #d1d5db;background:#fff;cursor:pointer;font-size:13px;transition:all .15s}
+.speed-btn:hover{background:#f3f4f6}
+.speed-btn.active{background:#6366f1;color:#fff;border-color:#6366f1}
+.progress-track{flex:1;height:6px;background:#e5e7eb;border-radius:3px;cursor:pointer;position:relative}
+.progress-fill{height:100%;background:#6366f1;border-radius:3px;transition:width .1s linear}
+.op-tag{display:inline-block;font-size:10px;padding:1px 6px;border-radius:4px;margin-left:4px;font-weight:600}
 </style>
 </head>
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const {useState,useRef,useEffect} = React;
+const {useState,useRef,useEffect,useCallback} = React;
 
-/* ═══════════════════════════════════════════
-   1. DIFF 유틸리티
-   ═══════════════════════════════════════════ */
-function simpleDiff(oldStr, newStr) {
-  if (oldStr === newStr) return null;
-  let pre = 0;
-  const min = Math.min(oldStr.length, newStr.length);
-  while (pre < min && oldStr[pre] === newStr[pre]) pre++;
-  let oS = 0, nS = 0;
-  while (oS < oldStr.length - pre && nS < newStr.length - pre &&
-         oldStr[oldStr.length-1-oS] === newStr[newStr.length-1-nS]) { oS++; nS++; }
-  return { pos: pre, deleted: oldStr.slice(pre, oldStr.length-oS), inserted: newStr.slice(pre, newStr.length-nS) };
+/* ═══ 1. DIFF ═══ */
+function simpleDiff(o,n){
+  if(o===n)return null;
+  let p=0;const m=Math.min(o.length,n.length);
+  while(p<m&&o[p]===n[p])p++;
+  let oS=0,nS=0;
+  while(oS<o.length-p&&nS<n.length-p&&o[o.length-1-oS]===n[n.length-1-nS]){oS++;nS++}
+  return{pos:p,deleted:o.slice(p,o.length-oS),inserted:n.slice(p,n.length-nS)};
 }
 
-/* ═══════════════════════════════════════════
-   2. 전역 상태 (diff 기반 추적)
-   charMeta[i] = { origin: 'typing'|'paste'|'typed-in-paste', pasteId: number|null, timestamp: number }
-   항상 charMeta.length === editorText.length 유지
-   ═══════════════════════════════════════════ */
-const S = {
-  charMeta: [],
-  prevText: '',
-  pasteEvents: [],  // [{id, originalText, timestamp}]
-  nextPasteId: 1,
-  deleteCount: 0,
-  pasteDeleteCount: 0,
-  pasteEditInserts: 0,
-  inputIntervals: [],
-  lastInputTime: null,
-  listeners: [],
+/* ═══ 2. 전역 상태 ═══ */
+const S={
+  charMeta:[],prevText:'',pasteEvents:[],nextPasteId:1,
+  deleteCount:0,pasteDeleteCount:0,pasteEditInserts:0,
+  inputIntervals:[],lastInputTime:null,listeners:[],
+  // ★ 오퍼레이션 로그 (재생용)
+  opLog:[],  // [{type:'insert'|'delete'|'paste', pos, deleted, inserted, timestamp, pasteId?}]
+  startTime:null,
 };
-function notify() { S.listeners.forEach(f => f()); }
+function notify(){S.listeners.forEach(f=>f())}
 
-/* ═══════════════════════════════════════════
-   3. 이벤트 핸들러
-   ═══════════════════════════════════════════ */
-function attachEvents(el) {
-  if (!el || el._bound) return;
-  el._bound = true;
-  let pendingPasteId = null;
-  let pendingPasteText = null;
+/* ═══ 3. 이벤트 핸들러 ═══ */
+function attachEvents(el){
+  if(!el||el._bound)return;el._bound=true;
 
-  // ── 붙여넣기 ──
-  el.addEventListener('paste', e => {
+  el.addEventListener('paste',e=>{
     e.preventDefault();
-    const text = e.clipboardData.getData('text/plain');
-    if (!text) return;
-    const now = Date.now();
-    const textBefore = el.textContent;
-
-    // DOM 삽입
-    const sel = window.getSelection();
-    if (sel.rangeCount) {
-      const r = sel.getRangeAt(0);
-      r.deleteContents();
-      const n = document.createTextNode(text);
-      r.insertNode(n);
-      r.setStartAfter(n);
-      r.collapse(true);
-      sel.removeAllRanges();
-      sel.addRange(r);
-    }
-    const textAfter = el.textContent;
-    const d = simpleDiff(textBefore, textAfter);
-    if (!d) return;
-
-    // 선택 영역 대체 시 삭제 처리
-    if (d.deleted.length > 0) {
-      for (let i = d.pos; i < d.pos + d.deleted.length && i < S.charMeta.length; i++) {
-        if (S.charMeta[i]?.origin === 'paste') S.pasteDeleteCount++;
-      }
-      S.charMeta.splice(d.pos, d.deleted.length);
-    }
-
-    // 새 paste 항목 삽입
-    const id = S.nextPasteId++;
-    S.pasteEvents.push({ id, originalText: text, timestamp: now });
-    const entries = [];
-    for (let i = 0; i < d.inserted.length; i++) {
-      entries.push({ origin: 'paste', pasteId: id, timestamp: now });
-    }
-    S.charMeta.splice(d.pos, 0, ...entries);
-    S.prevText = textAfter;
-    notify();
+    const text=e.clipboardData.getData('text/plain');
+    if(!text)return;
+    const now=Date.now();
+    if(!S.startTime)S.startTime=now;
+    const tb=el.textContent;
+    const sel=window.getSelection();
+    if(sel.rangeCount){const r=sel.getRangeAt(0);r.deleteContents();const nd=document.createTextNode(text);r.insertNode(nd);r.setStartAfter(nd);r.collapse(true);sel.removeAllRanges();sel.addRange(r)}
+    const ta=el.textContent;
+    const d=simpleDiff(tb,ta);if(!d)return;
+    if(d.deleted.length>0){for(let i=d.pos;i<d.pos+d.deleted.length&&i<S.charMeta.length;i++){if(S.charMeta[i]?.origin==='paste')S.pasteDeleteCount++}S.charMeta.splice(d.pos,d.deleted.length)}
+    const id=S.nextPasteId++;
+    S.pasteEvents.push({id,originalText:text,timestamp:now});
+    const entries=[];for(let i=0;i<d.inserted.length;i++)entries.push({origin:'paste',pasteId:id,timestamp:now});
+    S.charMeta.splice(d.pos,0,...entries);
+    // ★ 로그 기록
+    S.opLog.push({type:'paste',pos:d.pos,deleted:d.deleted,inserted:d.inserted,timestamp:now,pasteId:id});
+    S.prevText=ta;notify();
   });
 
-  // ── 일반 입력 (타이핑, 삭제, IME 조합 등) ──
-  el.addEventListener('input', e => {
-    const cur = el.textContent;
-    if (cur === S.prevText) return;
-    const now = Date.now();
-    const d = simpleDiff(S.prevText, cur);
-    if (!d) { S.prevText = cur; return; }
-
-    // 삭제 처리
-    if (d.deleted.length > 0) {
-      for (let i = d.pos; i < d.pos + d.deleted.length && i < S.charMeta.length; i++) {
-        if (S.charMeta[i]?.origin === 'paste' || S.charMeta[i]?.origin === 'typed-in-paste') {
-          S.pasteDeleteCount++;
-        }
-      }
-      S.deleteCount += d.deleted.length;
-      S.charMeta.splice(d.pos, d.deleted.length);
+  el.addEventListener('input',e=>{
+    const cur=el.textContent;if(cur===S.prevText)return;
+    const now=Date.now();
+    if(!S.startTime)S.startTime=now;
+    const d=simpleDiff(S.prevText,cur);if(!d){S.prevText=cur;return}
+    let logType='insert';
+    if(d.deleted.length>0){
+      for(let i=d.pos;i<d.pos+d.deleted.length&&i<S.charMeta.length;i++){if(S.charMeta[i]?.origin==='paste'||S.charMeta[i]?.origin==='typed-in-paste')S.pasteDeleteCount++}
+      S.deleteCount+=d.deleted.length;S.charMeta.splice(d.pos,d.deleted.length);
+      logType=d.inserted.length>0?'replace':'delete';
     }
-
-    // 삽입 처리
-    if (d.inserted.length > 0) {
-      // 붙여넣기 영역 내 삽입인지 판별
-      const before = d.pos > 0 ? S.charMeta[d.pos - 1] : null;
-      const after = d.pos < S.charMeta.length ? S.charMeta[d.pos] : null;
-      const inPaste = before && after &&
-        (before.origin === 'paste' || before.origin === 'typed-in-paste') &&
-        (after.origin === 'paste' || after.origin === 'typed-in-paste') &&
-        before.pasteId != null && before.pasteId === after.pasteId;
-
-      const entries = [];
-      for (let i = 0; i < d.inserted.length; i++) {
-        entries.push({
-          origin: inPaste ? 'typed-in-paste' : 'typing',
-          pasteId: inPaste ? before.pasteId : null,
-          timestamp: now,
-        });
-      }
-      S.charMeta.splice(d.pos, 0, ...entries);
-      if (inPaste) S.pasteEditInserts += d.inserted.length;
-
-      // 타이밍 기록
-      if (S.lastInputTime) {
-        const interval = now - S.lastInputTime;
-        if (interval > 0 && interval < 10000) S.inputIntervals.push(interval);
-      }
-      S.lastInputTime = now;
+    if(d.inserted.length>0){
+      const before=d.pos>0?S.charMeta[d.pos-1]:null;const after=d.pos<S.charMeta.length?S.charMeta[d.pos]:null;
+      const inP=before&&after&&(before.origin==='paste'||before.origin==='typed-in-paste')&&(after.origin==='paste'||after.origin==='typed-in-paste')&&before.pasteId!=null&&before.pasteId===after.pasteId;
+      const entries=[];for(let i=0;i<d.inserted.length;i++)entries.push({origin:inP?'typed-in-paste':'typing',pasteId:inP?before.pasteId:null,timestamp:now});
+      S.charMeta.splice(d.pos,0,...entries);if(inP)S.pasteEditInserts+=d.inserted.length;
+      if(S.lastInputTime){const iv=now-S.lastInputTime;if(iv>0&&iv<10000)S.inputIntervals.push(iv)}
+      S.lastInputTime=now;
     }
-
-    S.prevText = cur;
-    notify();
+    // ★ 로그 기록
+    S.opLog.push({type:logType,pos:d.pos,deleted:d.deleted,inserted:d.inserted,timestamp:now});
+    S.prevText=cur;notify();
   });
 }
 
-/* ═══════════════════════════════════════════
-   4. 분석 함수
-   ═══════════════════════════════════════════ */
-function runAnalysis() {
-  const el = document.querySelector('.editor-area');
-  if (!el) return null;
-  const text = el.textContent;
-  const meta = S.charMeta;
-  if (text.length === 0 || meta.length === 0) return null;
-
-  // 동기화 검증
-  if (text.length !== meta.length) {
-    console.warn('charMeta/text desync:', text.length, meta.length);
-    return null;
+/* ═══ 4. 행동 휴리스틱 분석 ═══ */
+function analyzeHeuristics(opLog){
+  if(opLog.length<3)return{nonlinear:{score:0,detail:'데이터 부족'},thinking:{score:0,detail:'데이터 부족'},editQuality:{score:0,detail:'데이터 부족'},rhythm:{score:0,detail:'데이터 부족'},behaviorScore:0};
+  // (a) 비선형 편집 — 커서가 앞으로 점프하는 빈도
+  let totalOps=0,backJumps=0,lastEnd=0;
+  for(const op of opLog){
+    if(op.inserted.length>0&&op.pos<lastEnd-1)backJumps++;
+    lastEnd=op.pos+op.inserted.length;totalOps++;
   }
+  const nlRatio=totalOps>0?backJumps/totalOps:0;
+  const nlScore=Math.min(100,Math.round(nlRatio*500));
+  // (b) 사고 정지 구간 — 2~15초 공백
+  let pauses=0;
+  for(let i=1;i<opLog.length;i++){const g=opLog[i].timestamp-opLog[i-1].timestamp;if(g>=2000&&g<15000)pauses++}
+  const totalTime=opLog[opLog.length-1].timestamp-opLog[0].timestamp;
+  const pauseRate=totalTime>0?(pauses*3000)/totalTime:0;
+  const thScore=Math.min(100,Math.round(pauseRate*200));
+  // (c) 수정 패턴 질 — 오타(1~2자 교체) vs 내용(3자+)
+  let typo=0,content=0;
+  for(const op of opLog){if(op.deleted.length>0){if(op.deleted.length<=2&&op.inserted.length<=2&&op.inserted.length>0)typo++;else if(op.deleted.length>=2||(op.deleted.length>0&&op.inserted.length>=2))content++}}
+  const eqScore=(typo+content)>0?Math.round(content/(typo+content)*100):0;
+  const behaviorScore=Math.round(nlScore*0.4+thScore*0.35+eqScore*0.25);
+  return{
+    nonlinear:{score:nlScore,detail:'커서 역방향 이동 '+backJumps+'회/'+totalOps+'회 (비선형 편집)'},
+    thinking:{score:thScore,detail:'사고 정지 '+pauses+'회 감지 (2~15초 공백)'},
+    editQuality:{score:eqScore,detail:'오타수정 '+typo+'회, 내용수정 '+content+'회'},
+    behaviorScore,
+  };
+}
 
-  // (a) 각 paste 그룹의 수정 상태
-  const pgStats = {};
-  S.pasteEvents.forEach(pe => {
-    const remaining = meta.filter(m => m.pasteId === pe.id && m.origin === 'paste').length;
-    const inserted = meta.filter(m => m.pasteId === pe.id && m.origin === 'typed-in-paste').length;
-    const deleted = pe.originalText.length - remaining;
-    pgStats[pe.id] = {
-      originalLen: pe.originalText.length,
-      remaining, inserted, deleted,
-      wasEdited: inserted > 0 || deleted > 0,
-      originalText: pe.originalText,
+/* ═══ 5. 기계적 분석 ═══ */
+function runAnalysis(){
+  const el=document.querySelector('.editor-area');if(!el)return null;
+  const text=el.textContent;const meta=S.charMeta;
+  if(!text.length||!meta.length)return null;
+  if(text.length!==meta.length)return null;
+  const pgS={};
+  S.pasteEvents.forEach(pe=>{const rem=meta.filter(m=>m.pasteId===pe.id&&m.origin==='paste').length;const ins=meta.filter(m=>m.pasteId===pe.id&&m.origin==='typed-in-paste').length;const del=pe.originalText.length-rem;pgS[pe.id]={originalLen:pe.originalText.length,remaining:rem,inserted:ins,deleted:del,wasEdited:ins>0||del>0,originalText:pe.originalText}});
+  const citIds=new Set();
+  S.pasteEvents.forEach(pe=>{let f=-1,l=-1;for(let i=0;i<meta.length;i++){if(meta[i].pasteId===pe.id){if(f<0)f=i;l=i}}if(f<0)return;const ctx=text.slice(Math.max(0,f-30),Math.min(text.length,l+30));const pats=[/["""]/, /https?:\/\//i,/www\./i,/출처/i,/참고/i,/인용/i,/참조/i,/source/i,/ref/i,/cite/i,/\[\d+\]/,/\(.*\d{4}\)/];if(pats.some(p=>p.test(ctx)))citIds.add(pe.id)});
+  const dts=meta.map(m=>{if(m.origin==='typing')return'typing';if(m.origin==='typed-in-paste')return'insert-in-paste';if(m.origin==='paste'){if(citIds.has(m.pasteId))return'citation';if(pgS[m.pasteId]?.wasEdited)return'paste-edited';return'paste-clean'}return'typing'});
+  const blocks=[];let cur=null;
+  for(let i=0;i<text.length;i++){const dt=dts[i];const pid=meta[i].pasteId;if(cur&&cur.dt===dt&&cur.pid===pid){cur.text+=text[i];cur.end=i}else{if(cur)blocks.push(cur);cur={dt,pid,text:text[i],start:i,end:i}}}
+  if(cur)blocks.push(cur);
+  blocks.forEach(b=>{const len=b.text.length;if(b.dt==='typing'){const ivs=[];for(let i=b.start+1;i<=b.end&&i<meta.length;i++){const d=meta[i].timestamp-meta[i-1].timestamp;if(d>0&&d<10000)ivs.push(d)}const avg=ivs.length>0?Math.round(ivs.reduce((a,c)=>a+c,0)/ivs.length):0;const cpm=avg>0?Math.round(60000/avg):0;b.evidence=len+'자 직접 입력, 평균 '+cpm+'타/분'}else if(b.dt==='paste-clean'){b.evidence=len+'자 동시 유입 (수정 없음)'}else if(b.dt==='paste-edited'){const gs=pgS[b.pid];b.evidence='원본 '+gs.originalLen+'자 → 잔존 '+gs.remaining+'자 (삭제 '+gs.deleted+', 추가 '+gs.inserted+')'}else if(b.dt==='insert-in-paste'){b.evidence='붙여넣기 영역 내 직접 '+len+'자 입력'}else if(b.dt==='citation'){b.evidence=len+'자 붙여넣기, 인용/출처 표기 발견'}});
+  const counts={typing:0,'paste-clean':0,'paste-edited':0,'insert-in-paste':0,citation:0};dts.forEach(dt=>counts[dt]++);
+  const total=text.length;const w=counts.typing*1+counts['insert-in-paste']*.7+counts['paste-edited']*.3+counts.citation*.5;
+  const score=total>0?Math.round(w/total*100):0;
+  let grade,gradeLabel;if(score>=80){grade='excellent';gradeLabel='우수'}else if(score>=50){grade='normal';gradeLabel='보통'}else{grade='reject';gradeLabel='거절'}
+  const avgCPM=S.inputIntervals.length>0?Math.round(60000/(S.inputIntervals.reduce((a,b)=>a+b,0)/S.inputIntervals.length)):0;
+  // ★ 행동 휴리스틱 통합
+  const heuristics=analyzeHeuristics(S.opLog);
+  const mechScore=score; // 기계적 점수 (기존)
+  const behScore=heuristics.behaviorScore; // 행동 점수
+  const finalScore=Math.round(mechScore*0.5+behScore*0.5); // 종합
+  let fGrade,fLabel;
+  if(finalScore>=70){fGrade='excellent';fLabel='우수'}else if(finalScore>=40){fGrade='normal';fLabel='보통'}else{fGrade='reject';fLabel='거절'}
+  return{blocks,counts,total,mechScore,behScore,finalScore,grade:fGrade,gradeLabel:fLabel,avgCPM,deleteCount:S.deleteCount,pgStats:pgS,pasteEditInserts:S.pasteEditInserts,pasteDeleteCount:S.pasteDeleteCount,heuristics};
+}
+
+/* ═══ 5. 재생 플레이어 컴포넌트 ═══ */
+function ReplayPlayer({opLog,onBack}){
+  const [playing,setPlaying]=useState(false);
+  const [speed,setSpeed]=useState(4);
+  const [currentIdx,setCurrentIdx]=useState(0);
+  const [replayText,setReplayText]=useState('');
+  const [cursorPos,setCursorPos]=useState(0);
+  const [lastOpType,setLastOpType]=useState(null);
+  const [lastPasteLen,setLastPasteLen]=useState(0);
+  const timerRef=useRef(null);
+  const textRef=useRef('');
+  const idxRef=useRef(0);
+  const cursorElRef=useRef(null);
+
+  const totalOps=opLog.length;
+  const totalTime=totalOps>0?opLog[totalOps-1].timestamp-opLog[0].timestamp:0;
+
+  // 특정 인덱스까지 오퍼레이션 적용하여 텍스트 재구성
+  const buildTextUpTo=useCallback((idx)=>{
+    let t='';
+    let pos=0;
+    for(let i=0;i<=idx&&i<opLog.length;i++){
+      const op=opLog[i];
+      if(op.deleted.length>0){t=t.slice(0,op.pos)+t.slice(op.pos+op.deleted.length)}
+      if(op.inserted.length>0){t=t.slice(0,op.pos)+op.inserted+t.slice(op.pos)}
+      pos=op.pos+op.inserted.length;
+    }
+    return{text:t,cursorPos:pos};
+  },[opLog]);
+
+  // 재생 스텝
+  const step=useCallback(()=>{
+    if(idxRef.current>=totalOps){setPlaying(false);return}
+    const op=opLog[idxRef.current];
+    let t=textRef.current;
+    if(op.deleted.length>0){t=t.slice(0,op.pos)+t.slice(op.pos+op.deleted.length)}
+    if(op.inserted.length>0){t=t.slice(0,op.pos)+op.inserted+t.slice(op.pos)}
+    textRef.current=t;
+    setReplayText(t);
+    setCursorPos(op.pos+op.inserted.length);
+    setLastOpType(op.type);
+    setLastPasteLen(op.type==='paste'?op.inserted.length:0);
+    idxRef.current++;
+    setCurrentIdx(idxRef.current);
+  },[opLog,totalOps]);
+
+  // 재생 루프
+  useEffect(()=>{
+    if(!playing)return;
+    const run=()=>{
+      if(idxRef.current>=totalOps){setPlaying(false);return}
+      step();
+      // 다음 오퍼레이션까지의 딜레이 계산
+      if(idxRef.current<totalOps){
+        const cur=opLog[idxRef.current-1];
+        const next=opLog[idxRef.current];
+        let delay=(next.timestamp-cur.timestamp)/speed;
+        delay=Math.max(10,Math.min(delay,500)); // 10ms ~ 500ms 범위로 제한
+        timerRef.current=setTimeout(run,delay);
+      }
     };
-  });
+    run();
+    return()=>{if(timerRef.current)clearTimeout(timerRef.current)};
+  },[playing,speed,step,opLog,totalOps]);
 
-  // (b) 인용 감지 (paste 그룹 주변 텍스트 검사)
-  const citationIds = new Set();
-  S.pasteEvents.forEach(pe => {
-    // 해당 paste 그룹의 현재 텍스트 위치 범위 찾기
-    let first = -1, last = -1;
-    for (let i = 0; i < meta.length; i++) {
-      if (meta[i].pasteId === pe.id) { if (first < 0) first = i; last = i; }
+  const handlePlayPause=()=>{
+    if(currentIdx>=totalOps){
+      // 처음부터 다시
+      idxRef.current=0;setCurrentIdx(0);textRef.current='';setReplayText('');setCursorPos(0);
     }
-    if (first < 0) return;
-    const ctxStart = Math.max(0, first - 30);
-    const ctxEnd = Math.min(text.length, last + 30);
-    const ctx = text.slice(ctxStart, ctxEnd);
-    const pats = [/["""“”]/, /https?:\/\//i, /www\./i, /출처/i, /참고/i, /인용/i, /참조/i, /source/i, /ref/i, /cite/i, /\[\d+\]/, /\(.*\d{4}\)/];
-    if (pats.some(p => p.test(ctx))) citationIds.add(pe.id);
-  });
-
-  // (c) 각 글자의 표시 유형 결정
-  const displayTypes = meta.map(m => {
-    if (m.origin === 'typing') return 'typing';
-    if (m.origin === 'typed-in-paste') return 'insert-in-paste';
-    if (m.origin === 'paste') {
-      if (citationIds.has(m.pasteId)) return 'citation';
-      if (pgStats[m.pasteId]?.wasEdited) return 'paste-edited';
-      return 'paste-clean';
-    }
-    return 'typing';
-  });
-
-  // (d) 연속 블록 그루핑
-  const blocks = [];
-  let cur = null;
-  for (let i = 0; i < text.length; i++) {
-    const dt = displayTypes[i];
-    const pid = meta[i].pasteId;
-    if (cur && cur.dt === dt && cur.pid === pid) {
-      cur.text += text[i]; cur.end = i;
-    } else {
-      if (cur) blocks.push(cur);
-      cur = { dt, pid, text: text[i], start: i, end: i };
-    }
-  }
-  if (cur) blocks.push(cur);
-
-  // (e) 블록별 근거 생성
-  blocks.forEach(b => {
-    const len = b.text.length;
-    switch (b.dt) {
-      case 'typing': {
-        const intervals = [];
-        for (let i = b.start + 1; i <= b.end && i < meta.length; i++) {
-          const d = meta[i].timestamp - meta[i-1].timestamp;
-          if (d > 0 && d < 10000) intervals.push(d);
-        }
-        const avg = intervals.length > 0 ? Math.round(intervals.reduce((a,b)=>a+b,0)/intervals.length) : 0;
-        const cpm = avg > 0 ? Math.round(60000/avg) : 0;
-        b.evidence = `${len}자 직접 입력, 평균 ${cpm}타/분 (인간 타이핑 추정)`;
-        break;
-      }
-      case 'paste-clean':
-        b.evidence = `${len}자가 동시 유입 (붙여넣기 감지, 수정 없음)`;
-        break;
-      case 'paste-edited': {
-        const gs = pgStats[b.pid];
-        b.evidence = `원본 ${gs.originalLen}자 → 현재 ${gs.remaining}자 (${gs.deleted}자 삭제, ${gs.inserted}자 추가)`;
-        break;
-      }
-      case 'insert-in-paste': {
-        b.evidence = `붙여넣기 영역 내에서 직접 ${len}자 입력 (수정 흔적)`;
-        break;
-      }
-      case 'citation':
-        b.evidence = `${len}자 붙여넣기, 주변에 인용/출처 표기 발견`;
-        break;
-    }
-  });
-
-  // (f) 통계
-  const counts = { typing: 0, 'paste-clean': 0, 'paste-edited': 0, 'insert-in-paste': 0, citation: 0 };
-  displayTypes.forEach(dt => counts[dt]++);
-  const total = text.length;
-
-  // 가중 점수: typing 100%, insert-in-paste 70%, paste-edited 30%, citation 50%, paste-clean 0%
-  const weighted = counts.typing * 1.0 + counts['insert-in-paste'] * 0.7 +
-    counts['paste-edited'] * 0.3 + counts.citation * 0.5;
-  const score = total > 0 ? Math.round(weighted / total * 100) : 0;
-
-  let grade, gradeLabel;
-  if (score >= 80) { grade = 'excellent'; gradeLabel = '우수'; }
-  else if (score >= 50) { grade = 'normal'; gradeLabel = '보통'; }
-  else { grade = 'reject'; gradeLabel = '거절'; }
-
-  const avgCPM = S.inputIntervals.length > 0
-    ? Math.round(60000 / (S.inputIntervals.reduce((a,b)=>a+b,0) / S.inputIntervals.length))
-    : 0;
-
-  return { blocks, counts, total, score, grade, gradeLabel, avgCPM, deleteCount: S.deleteCount, pgStats, pasteEditInserts: S.pasteEditInserts, pasteDeleteCount: S.pasteDeleteCount };
-}
-
-/* ═══════════════════════════════════════════
-   5. 로그인 컴포넌트
-   ═══════════════════════════════════════════ */
-function Login({ onLogin }) {
-  const [id, setId] = useState('');
-  const [pw, setPw] = useState('');
-  const [err, setErr] = useState('');
-  const [shake, setShake] = useState(false);
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (id === 'muhayu' && pw === 'muhayu2026!') {
-      onLogin();
-    } else {
-      setErr('아이디 또는 비밀번호가 올바르지 않습니다.');
-      setShake(true);
-      setTimeout(() => setShake(false), 500);
-    }
+    setPlaying(!playing);
+  };
+  const handleReset=()=>{
+    setPlaying(false);if(timerRef.current)clearTimeout(timerRef.current);
+    idxRef.current=0;setCurrentIdx(0);textRef.current='';setReplayText('');setCursorPos(0);setLastOpType(null);
+  };
+  const handleSeek=(e)=>{
+    const rect=e.currentTarget.getBoundingClientRect();
+    const pct=(e.clientX-rect.left)/rect.width;
+    const idx=Math.round(pct*totalOps);
+    setPlaying(false);if(timerRef.current)clearTimeout(timerRef.current);
+    const{text,cursorPos:cp}=buildTextUpTo(idx-1);
+    textRef.current=text;setReplayText(text);setCursorPos(cp);
+    idxRef.current=idx;setCurrentIdx(idx);
   };
 
-  return (
-    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'linear-gradient(135deg,#667eea 0%,#764ba2 100%)'}}>
-      <div className={shake ? 'shake' : ''} style={{background:'#fff',borderRadius:'16px',padding:'48px 40px',width:'100%',maxWidth:'400px',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}>
-        <div style={{textAlign:'center',marginBottom:'32px'}}>
-          <div style={{width:'56px',height:'56px',background:'linear-gradient(135deg,#667eea,#764ba2)',borderRadius:'12px',display:'inline-flex',alignItems:'center',justifyContent:'center',marginBottom:'16px'}}>
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+  // 커서 위치로 자동 스크롤
+  useEffect(()=>{
+    if(cursorElRef.current){cursorElRef.current.scrollIntoView({behavior:'smooth',block:'center',inline:'nearest'})}
+  },[cursorPos,currentIdx]);
+
+  // 렌더링: 커서 위치에 블링크 커서 삽입
+  const renderText=()=>{
+    const t=replayText;
+    const pos=Math.min(cursorPos,t.length);
+    const before=t.slice(0,pos);
+    const after=t.slice(pos);
+
+    // 마지막 붙여넣기 하이라이트
+    if(lastOpType==='paste'&&lastPasteLen>0){
+      const pStart=pos-lastPasteLen;
+      const beforePaste=t.slice(0,Math.max(0,pStart));
+      const pasteText=t.slice(Math.max(0,pStart),pos);
+      return <>{beforePaste}<span className="paste-flash" style={{background:'rgba(239,68,68,.15)'}}>{pasteText}</span><span ref={cursorElRef} className="cursor-blink"></span>{after}</>;
+    }
+    return <>{before}<span ref={cursorElRef} className="cursor-blink"></span>{after}</>;
+  };
+
+  const elapsed=currentIdx>0&&currentIdx<=totalOps?opLog[currentIdx-1].timestamp-opLog[0].timestamp:0;
+  const pct=totalOps>0?(currentIdx/totalOps*100):0;
+
+  return(
+    <div className="fade-in">
+      <div className="bg-white rounded-xl shadow-lg p-6 mb-4">
+        <div className="flex justify-between items-center mb-3">
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-semibold text-gray-600">작성 과정 재생</label>
+            {lastOpType&&<span className={'op-tag '+(lastOpType==='paste'?'bg-red-100 text-red-700':lastOpType==='delete'?'bg-gray-100 text-gray-700':'bg-green-100 text-green-700')}>
+              {lastOpType==='paste'?'붙여넣기':lastOpType==='delete'?'삭제':'타이핑'}
+            </span>}
           </div>
-          <h2 style={{fontSize:'22px',fontWeight:'700',color:'#1f2937',margin:'0 0 6px'}}>작성 진정성 인증 에디터</h2>
-          <p style={{fontSize:'13px',color:'#6b7280',margin:0}}>계속하려면 로그인하세요</p>
+          <div className="text-xs text-gray-400">
+            <span>{currentIdx}/{totalOps} 오퍼레이션</span>
+            <span className="ml-3">{(elapsed/1000).toFixed(1)}초 / {(totalTime/1000).toFixed(1)}초</span>
+          </div>
         </div>
-        <form onSubmit={handleSubmit}>
-          <div style={{marginBottom:'16px'}}>
-            <label style={{display:'block',fontSize:'13px',fontWeight:'600',color:'#374151',marginBottom:'6px'}}>아이디</label>
-            <input value={id} onChange={e=>setId(e.target.value)} placeholder="아이디 입력" autoFocus
-              style={{width:'100%',padding:'10px 14px',border:'2px solid #e5e7eb',borderRadius:'8px',fontSize:'15px',outline:'none',boxSizing:'border-box',transition:'border-color .2s'}}
-              onFocus={e=>e.target.style.borderColor='#667eea'} onBlur={e=>e.target.style.borderColor='#e5e7eb'} />
-          </div>
-          <div style={{marginBottom:'8px'}}>
-            <label style={{display:'block',fontSize:'13px',fontWeight:'600',color:'#374151',marginBottom:'6px'}}>비밀번호</label>
-            <input type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder="비밀번호 입력"
-              style={{width:'100%',padding:'10px 14px',border:'2px solid #e5e7eb',borderRadius:'8px',fontSize:'15px',outline:'none',boxSizing:'border-box',transition:'border-color .2s'}}
-              onFocus={e=>e.target.style.borderColor='#667eea'} onBlur={e=>e.target.style.borderColor='#e5e7eb'} />
-          </div>
-          {err && <p style={{color:'#ef4444',fontSize:'13px',margin:'8px 0 0',textAlign:'center'}}>{err}</p>}
-          <button type="submit" style={{width:'100%',padding:'12px',marginTop:'20px',background:'linear-gradient(135deg,#667eea,#764ba2)',color:'#fff',border:'none',borderRadius:'8px',fontSize:'15px',fontWeight:'700',cursor:'pointer',transition:'opacity .2s'}}
-            onMouseOver={e=>e.target.style.opacity='.88'} onMouseOut={e=>e.target.style.opacity='1'}>
-            로그인
+        <div className="replay-area">{replayText.length===0&&currentIdx===0?<span className="text-gray-300">재생을 시작하세요...</span>:renderText()}</div>
+
+        {/* 컨트롤 */}
+        <div className="replay-controls">
+          <button onClick={handlePlayPause} className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-colors text-sm">
+            {playing?'⏸ 일시정지':currentIdx>=totalOps?'⟳ 다시재생':'▶ 재생'}
           </button>
-        </form>
+          <button onClick={handleReset} className="px-3 py-2 bg-indigo-100 text-indigo-700 rounded-lg text-sm hover:bg-indigo-200">⏮ 처음</button>
+
+          {/* 프로그레스 바 */}
+          <div className="progress-track" onClick={handleSeek}>
+            <div className="progress-fill" style={{width:pct+'%'}}></div>
+          </div>
+
+          {/* 배속 */}
+          {[1,2,4,8,16].map(s=>(
+            <button key={s} onClick={()=>setSpeed(s)} className={'speed-btn'+(speed===s?' active':'')}>
+              {s}x
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="text-center">
+        <button onClick={onBack} className="px-6 py-2 bg-indigo-100 text-indigo-700 rounded-lg font-semibold hover:bg-indigo-200 transition-colors">돌아가기</button>
       </div>
     </div>
   );
 }
 
-/* ═══════════════════════════════════════════
-   6. React 컴포넌트
-   ═══════════════════════════════════════════ */
-function App() {
-  const [loggedIn, setLoggedIn] = useState(false);
-  const [, tick] = useState(0);
-  const [showCert, setShowCert] = useState(false);
-  const [result, setResult] = useState(null);
-  const editorRef = useRef(null);
+/* ═══ 6. 메인 앱 ═══ */
+function App(){
+  const[,tick]=useState(0);
+  const[view,setView]=useState('editor'); // 'editor'|'cert'|'replay'
+  const[result,setResult]=useState(null);
+  const editorRef=useRef(null);
 
-  useEffect(() => {
-    const fn = () => tick(n => n+1);
-    S.listeners.push(fn);
-    return () => { S.listeners = S.listeners.filter(l => l !== fn); };
-  }, []);
+  useEffect(()=>{const fn=()=>tick(n=>n+1);S.listeners.push(fn);return()=>{S.listeners=S.listeners.filter(l=>l!==fn)}},[]);
+  useEffect(()=>{if(view==='editor')attachEvents(editorRef.current)},[view]);
 
-  useEffect(() => { if (loggedIn) attachEvents(editorRef.current); }, [showCert, loggedIn]);
-
-  if (!loggedIn) return <Login onLogin={() => setLoggedIn(true)} />;
-
-  const handleAnalyze = () => {
-    const r = runAnalysis();
-    if (r) { setResult(r); setShowCert(true); }
-  };
-  const handleReset = () => {
-    S.charMeta = []; S.prevText = ''; S.pasteEvents = []; S.nextPasteId = 1;
-    S.deleteCount = 0; S.pasteDeleteCount = 0; S.pasteEditInserts = 0;
-    S.inputIntervals = []; S.lastInputTime = null;
-    setShowCert(false); setResult(null);
-    if (editorRef.current) editorRef.current.textContent = '';
-    notify();
+  const handleAnalyze=()=>{const r=runAnalysis();if(r){setResult(r);setView('cert')}};
+  const handleReplay=()=>{if(S.opLog.length>0)setView('replay')};  // 인증서에서만 사용
+  const handleReset=()=>{
+    S.charMeta=[];S.prevText='';S.pasteEvents=[];S.nextPasteId=1;S.deleteCount=0;S.pasteDeleteCount=0;S.pasteEditInserts=0;S.inputIntervals=[];S.lastInputTime=null;S.opLog=[];S.startTime=null;
+    setView('editor');setResult(null);
+    if(editorRef.current)editorRef.current.textContent='';notify();
   };
 
-  const n = S.charMeta.length;
-  const ts = S.inputIntervals;
-  const cpm = ts.length > 0 ? Math.round(60000/(ts.reduce((a,b)=>a+b,0)/ts.length)) : 0;
-  const typingN = S.charMeta.filter(m => m.origin === 'typing').length;
-  const pasteN = S.charMeta.filter(m => m.origin === 'paste').length;
-  const editN = S.charMeta.filter(m => m.origin === 'typed-in-paste').length;
+  const n=S.charMeta.length;const ts=S.inputIntervals;
+  const cpm=ts.length>0?Math.round(60000/(ts.reduce((a,b)=>a+b,0)/ts.length)):0;
+  const typN=S.charMeta.filter(m=>m.origin==='typing').length;
+  const pasN=S.charMeta.filter(m=>m.origin==='paste').length;
+  const edN=S.charMeta.filter(m=>m.origin==='typed-in-paste').length;
 
-  return (
+  return(
     <div className="max-w-4xl mx-auto p-6">
-      <header className="text-center mb-8">
+      <header className="text-center mb-6">
         <h1 className="text-3xl font-bold text-gray-800">작성 진정성 인증 에디터</h1>
-        <p className="text-gray-500 mt-2">타이핑·붙여넣기·수정을 구분하여 작성 진정성을 분석합니다</p>
+        <p className="text-gray-500 mt-1 text-sm">타이핑·붙여넣기·수정을 구분하여 작성 진정성을 분석합니다</p>
       </header>
-      {!showCert && (
+
+      {view==='editor'&&(
         <div className="fade-in">
           <div className="bg-white rounded-xl shadow-lg p-6 mb-4">
-            <div className="flex justify-between items-center mb-3">
+            <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
               <label className="text-sm font-semibold text-gray-600">본문 작성</label>
-              <div className="flex gap-3 text-xs text-gray-400">
+              <div className="flex gap-3 text-xs text-gray-400 flex-wrap">
                 <span>총: <strong className="text-gray-700">{n}</strong></span>
-                <span>타이핑: <strong className="text-green-600">{typingN}</strong></span>
-                <span>복붙: <strong className="text-red-500">{pasteN}</strong></span>
-                <span>복붙수정: <strong className="text-blue-500">{editN}</strong></span>
+                <span>타이핑: <strong className="text-green-600">{typN}</strong></span>
+                <span>복붙: <strong className="text-red-500">{pasN}</strong></span>
+                <span>수정: <strong className="text-blue-500">{edN}</strong></span>
                 <span>삭제: <strong className="text-gray-700">{S.deleteCount}</strong></span>
                 <span>{cpm}타/분</span>
               </div>
             </div>
             <div ref={editorRef} className="editor-area" contentEditable suppressContentEditableWarning />
-            <div className="flex gap-3 mt-2 flex-wrap">
-              <span className="inline-flex items-center text-xs text-gray-400"><span className="w-3 h-3 rounded-full bg-green-400 mr-1"></span>타이핑</span>
-              <span className="inline-flex items-center text-xs text-gray-400"><span className="w-3 h-3 rounded-full bg-red-400 mr-1"></span>붙여넣기</span>
-              <span className="inline-flex items-center text-xs text-gray-400"><span className="w-3 h-3 rounded-full bg-orange-400 mr-1"></span>수정된 복붙</span>
-              <span className="inline-flex items-center text-xs text-gray-400"><span className="w-3 h-3 rounded-full bg-blue-400 mr-1"></span>복붙 내 직접입력</span>
-              <span className="inline-flex items-center text-xs text-gray-400"><span className="w-3 h-3 rounded-full bg-yellow-400 mr-1"></span>인용</span>
+            <div className="flex gap-3 mt-2 flex-wrap text-xs text-gray-400">
+              <span className="flex items-center"><span className="w-3 h-3 rounded-full bg-green-400 mr-1"></span>타이핑</span>
+              <span className="flex items-center"><span className="w-3 h-3 rounded-full bg-red-400 mr-1"></span>붙여넣기</span>
+              <span className="flex items-center"><span className="w-3 h-3 rounded-full bg-orange-400 mr-1"></span>수정된복붙</span>
+              <span className="flex items-center"><span className="w-3 h-3 rounded-full bg-blue-400 mr-1"></span>복붙내입력</span>
+              <span className="flex items-center"><span className="w-3 h-3 rounded-full bg-yellow-400 mr-1"></span>인용</span>
             </div>
           </div>
-          <div className="flex gap-3 justify-center">
-            <button onClick={handleAnalyze} disabled={n===0} className="px-8 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors shadow-md">진정성 분석하기</button>
-            <button onClick={handleReset} className="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition-colors">초기화</button>
+          <div className="flex gap-3 justify-center flex-wrap">
+            <button onClick={handleAnalyze} disabled={n===0} className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors shadow-md">진정성 분석</button>
+            <button onClick={handleReset} className="px-6 py-3 bg-red-100 text-red-700 rounded-lg font-semibold hover:bg-red-200 transition-colors">초기화</button>
           </div>
         </div>
       )}
-      {showCert && result && <Certificate result={result} onBack={() => setShowCert(false)} />}
+
+      {view==='cert'&&result&&<Certificate result={result} onBack={()=>setView('editor')} onReplay={()=>setView('replay')} hasOpLog={S.opLog.length>0} />}
+      {view==='replay'&&<ReplayPlayer opLog={S.opLog} onBack={()=>setView('editor')} />}
     </div>
   );
 }
 
-function Certificate({ result, onBack }) {
-  const [hovered, setHovered] = useState(null);
-  const [showReplay, setShowReplay] = useState(false);
-  const { blocks, counts, total, score, grade, gradeLabel, avgCPM, deleteCount, pgStats, pasteEditInserts, pasteDeleteCount } = result;
-  const gc = grade==='excellent'?'grade-excellent':grade==='normal'?'grade-normal':'grade-reject';
+/* ═══ 7. 인증서 ═══ */
+function Certificate({result,onBack,onReplay,hasOpLog}){
+  const[hovered,setHovered]=useState(null);
+  const{blocks,counts,total,mechScore,behScore,finalScore,grade,gradeLabel,avgCPM,deleteCount,pgStats,pasteEditInserts,pasteDeleteCount,heuristics}=result;
+  const gc=grade==='excellent'?'grade-excellent':grade==='normal'?'grade-normal':'grade-reject';
+  const dtL=dt=>({typing:'직접 타이핑','paste-clean':'단순 붙여넣기','paste-edited':'수정된 붙여넣기','insert-in-paste':'복붙 내 직접입력',citation:'인용 붙여넣기'})[dt]||dt;
+  const dtC=dt=>({typing:'hl-typing','paste-clean':'hl-paste','paste-edited':'hl-paste-edited','insert-in-paste':'hl-insert-in-paste',citation:'hl-citation'})[dt]||'';
+  const dtB=dt=>({typing:'bg-green-100 text-green-800','paste-clean':'bg-red-100 text-red-800','paste-edited':'bg-orange-100 text-orange-800','insert-in-paste':'bg-blue-100 text-blue-800',citation:'bg-yellow-100 text-yellow-800'})[dt]||'bg-gray-100';
 
-  const dtLabel = dt => ({typing:'직접 타이핑','paste-clean':'단순 붙여넣기','paste-edited':'수정된 붙여넣기','insert-in-paste':'복붙 내 직접입력',citation:'인용 붙여넣기'})[dt]||dt;
-  const dtClass = dt => ({typing:'hl-typing','paste-clean':'hl-paste','paste-edited':'hl-paste-edited','insert-in-paste':'hl-insert-in-paste',citation:'hl-citation'})[dt]||'';
-  const dtBadge = dt => ({typing:'bg-green-100 text-green-800','paste-clean':'bg-red-100 text-red-800','paste-edited':'bg-orange-100 text-orange-800','insert-in-paste':'bg-blue-100 text-blue-800',citation:'bg-yellow-100 text-yellow-800'})[dt]||'bg-gray-100';
-
-  const editedPasteCount = counts['paste-edited'] + counts['insert-in-paste'];
-
-  return (
+  return(
     <div className="fade-in">
-      {/* 등급 */}
       <div className={gc+' rounded-xl p-8 text-white text-center mb-6 shadow-xl'}>
         <div className="text-sm uppercase tracking-widest opacity-80 mb-2">작성 진정성 인증서</div>
-        <div className="text-6xl font-bold mb-2">{score}<span className="text-3xl">점</span></div>
+        <div className="text-6xl font-bold mb-2">{finalScore}<span className="text-3xl">점</span></div>
         <div className="text-2xl font-semibold">등급: {gradeLabel}</div>
-        <div className="text-sm opacity-80 mt-2">
-          {grade==='excellent'&&'높은 수준의 직접 작성이 확인되었습니다'}
-          {grade==='normal'&&'일부 외부 콘텐츠가 포함되어 있습니다'}
-          {grade==='reject'&&'대부분의 콘텐츠가 외부에서 유입되었습니다'}
-        </div>
+        <div className="text-sm opacity-80 mt-2">{grade==='excellent'&&'높은 수준의 직접 작성이 확인되었습니다'}{grade==='normal'&&'일부 외부 콘텐츠가 포함되어 있습니다'}{grade==='reject'&&'대부분의 콘텐츠가 외부에서 유입되었습니다'}</div>
       </div>
-
-      {/* 통계 카드 */}
       <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-6">
         <div className="stat-card bg-white rounded-lg p-3 shadow text-center"><div className="text-xl font-bold text-gray-800">{total}</div><div className="text-xs text-gray-500">총 글자</div></div>
         <div className="stat-card bg-white rounded-lg p-3 shadow text-center"><div className="text-xl font-bold text-green-600">{counts.typing}</div><div className="text-xs text-gray-500">직접 타이핑</div></div>
         <div className="stat-card bg-white rounded-lg p-3 shadow text-center"><div className="text-xl font-bold text-red-500">{counts['paste-clean']}</div><div className="text-xs text-gray-500">단순 붙여넣기</div></div>
         <div className="stat-card bg-white rounded-lg p-3 shadow text-center"><div className="text-xl font-bold text-orange-500">{counts['paste-edited']}</div><div className="text-xs text-gray-500">수정된 복붙</div></div>
         <div className="stat-card bg-white rounded-lg p-3 shadow text-center"><div className="text-xl font-bold text-blue-500">{counts['insert-in-paste']}</div><div className="text-xs text-gray-500">복붙 내 삽입</div></div>
-        <div className="stat-card bg-white rounded-lg p-3 shadow text-center"><div className="text-xl font-bold text-yellow-500">{counts.citation}</div><div className="text-xs text-gray-500">인용 붙여넣기</div></div>
+        <div className="stat-card bg-white rounded-lg p-3 shadow text-center"><div className="text-xl font-bold text-yellow-500">{counts.citation}</div><div className="text-xs text-gray-500">인용</div></div>
       </div>
-
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <div className="stat-card bg-white rounded-lg p-3 shadow text-center"><div className="text-xl font-bold text-indigo-600">{avgCPM}<span className="text-sm">타/분</span></div><div className="text-xs text-gray-500">평균 타이핑 속도</div></div>
-        <div className="stat-card bg-white rounded-lg p-3 shadow text-center"><div className="text-xl font-bold text-gray-600">{deleteCount}</div><div className="text-xs text-gray-500">삭제 횟수</div></div>
+        <div className="stat-card bg-white rounded-lg p-3 shadow text-center"><div className="text-xl font-bold text-indigo-600">{avgCPM}<span className="text-sm">타/분</span></div><div className="text-xs text-gray-500">타이핑 속도</div></div>
+        <div className="stat-card bg-white rounded-lg p-3 shadow text-center"><div className="text-xl font-bold text-gray-600">{deleteCount}</div><div className="text-xs text-gray-500">총 삭제</div></div>
         <div className="stat-card bg-white rounded-lg p-3 shadow text-center"><div className="text-xl font-bold text-orange-600">{pasteDeleteCount}</div><div className="text-xs text-gray-500">복붙 내 삭제</div></div>
         <div className="stat-card bg-white rounded-lg p-3 shadow text-center"><div className="text-xl font-bold text-blue-600">{pasteEditInserts}</div><div className="text-xs text-gray-500">복붙 내 추가</div></div>
       </div>
-
-      {/* 비율 바 */}
       <div className="bg-white rounded-lg p-4 shadow mb-6">
         <div className="text-sm font-semibold text-gray-600 mb-2">구성 비율</div>
         <div className="flex h-6 rounded-full overflow-hidden bg-gray-100">
@@ -501,174 +450,68 @@ function Certificate({ result, onBack }) {
           <span className="flex items-center"><span className="w-2 h-2 rounded-full bg-yellow-400 mr-1"></span>인용</span>
         </div>
       </div>
-
-      {/* 점수 산정 기준 */}
+      {/* 종합 점수 구성 */}
       <div className="bg-white rounded-lg p-4 shadow mb-6">
-        <div className="text-sm font-semibold text-gray-600 mb-2">점수 산정 기준</div>
-        <div className="grid grid-cols-5 gap-2 text-xs text-center">
-          <div><span className="inline-block w-3 h-3 rounded-full bg-green-400 mb-1"></span><br/>타이핑<br/><strong>100%</strong></div>
-          <div><span className="inline-block w-3 h-3 rounded-full bg-blue-400 mb-1"></span><br/>복붙내삽입<br/><strong>70%</strong></div>
-          <div><span className="inline-block w-3 h-3 rounded-full bg-yellow-400 mb-1"></span><br/>인용<br/><strong>50%</strong></div>
-          <div><span className="inline-block w-3 h-3 rounded-full bg-orange-400 mb-1"></span><br/>수정된복붙<br/><strong>30%</strong></div>
-          <div><span className="inline-block w-3 h-3 rounded-full bg-red-400 mb-1"></span><br/>단순복붙<br/><strong>0%</strong></div>
+        <div className="text-sm font-semibold text-gray-600 mb-3">종합 점수 구성</div>
+        <div className="grid grid-cols-2 gap-4 mb-3">
+          <div className="border rounded-lg p-3 text-center">
+            <div className="text-xs text-gray-500 mb-1">기계적 분석 (50%)</div>
+            <div className="text-2xl font-bold text-indigo-600">{mechScore}<span className="text-sm">점</span></div>
+            <div className="text-xs text-gray-400 mt-1">타이핑/붙여넣기 비율 기반</div>
+          </div>
+          <div className="border rounded-lg p-3 text-center">
+            <div className="text-xs text-gray-500 mb-1">행동 분석 (50%)</div>
+            <div className="text-2xl font-bold text-green-600">{behScore}<span className="text-sm">점</span></div>
+            <div className="text-xs text-gray-400 mt-1">사고 흔적·수정 패턴 기반</div>
+          </div>
         </div>
       </div>
-
-      {/* 하이라이트된 본문 */}
+      {/* 행동 분석 상세 */}
       <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-        <div className="text-sm font-semibold text-gray-600 mb-3">본문 분석 <span className="text-xs text-gray-400 font-normal">(마우스를 올려 상세 근거 확인)</span></div>
-        <div className="text-base leading-8 text-gray-800" style={{whiteSpace:'pre-wrap'}}>
-          {blocks.map((b, i) => (
-            <span key={i} className={dtClass(b.dt)+' tt'} onMouseEnter={()=>setHovered(i)} onMouseLeave={()=>setHovered(null)}>
-              {b.text}
-              {hovered===i&&(
-                <span className="tt-box">
-                  <strong>{dtLabel(b.dt)}</strong><br/>
-                  근거: {b.evidence}<br/>
-                  구간: {b.text.length}자 ({b.start}~{b.end})
-                </span>
-              )}
-            </span>
+        <div className="text-sm font-semibold text-gray-600 mb-3">행동 분석 (사고 흔적 감지)</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {[
+            {label:'비선형 편집',icon:'↩',data:heuristics.nonlinear,desc:'앞부분으로 돌아가 수정하는 행위. 옮겨쓰기는 순방향 진행.',weight:'40%'},
+            {label:'사고 정지',icon:'⏸',data:heuristics.thinking,desc:'2~15초 공백. 생각하며 쓸 때 자연스럽게 발생.',weight:'35%'},
+            {label:'수정 패턴 질',icon:'✎',data:heuristics.editQuality,desc:'단순 오타 수정 vs 내용 수정 비율. 내용 수정이 많을수록 높음.',weight:'25%'},
+          ].map((item,i)=>(
+            <div key={i} className="border rounded-lg p-3">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-sm font-semibold text-gray-700">{item.icon} {item.label} <span className="text-xs font-normal text-gray-400">({item.weight})</span></span>
+                <span className={'text-lg font-bold '+(item.data.score>=60?'text-green-600':item.data.score>=30?'text-yellow-600':'text-red-500')}>{item.data.score}<span className="text-xs">점</span></span>
+              </div>
+              <div className="w-full h-2 bg-gray-100 rounded-full mb-2">
+                <div className={'h-full rounded-full '+(item.data.score>=60?'bg-green-400':item.data.score>=30?'bg-yellow-400':'bg-red-400')} style={{width:item.data.score+'%'}}></div>
+              </div>
+              <div className="text-xs text-gray-600">{item.data.detail}</div>
+              <div className="text-xs text-gray-400 mt-1">{item.desc}</div>
+            </div>
           ))}
         </div>
       </div>
-
-      {/* 붙여넣기 이벤트별 수정 내역 */}
-      {Object.keys(pgStats).length > 0 && (
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-          <div className="text-sm font-semibold text-gray-600 mb-3">붙여넣기 이벤트별 수정 내역</div>
-          <div className="space-y-3">
-            {Object.entries(pgStats).map(([id, gs]) => (
-              <div key={id} className="border rounded-lg p-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className={gs.wasEdited ? 'bg-orange-100 text-orange-800 text-xs px-2 py-1 rounded-full font-semibold' : 'bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full font-semibold'}>
-                    {gs.wasEdited ? '수정됨' : '원본 유지'}
-                  </span>
-                  <span className="text-xs text-gray-400">원본 {gs.originalLen}자</span>
-                </div>
-                <div className="text-xs text-gray-500 mb-1 truncate">원본: "{gs.originalText.slice(0,60)}{gs.originalText.length>60?'...':''}"</div>
-                {gs.wasEdited && (
-                  <div className="text-xs text-gray-600 mt-1">
-                    현재 잔존: <strong>{gs.remaining}자</strong>
-                    {gs.deleted > 0 && <span className="text-red-500 ml-2">삭제: {gs.deleted}자</span>}
-                    {gs.inserted > 0 && <span className="text-blue-500 ml-2">추가: {gs.inserted}자</span>}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+      <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+        <div className="text-sm font-semibold text-gray-600 mb-3">본문 분석 <span className="text-xs text-gray-400 font-normal">(마우스를 올려 상세 근거 확인)</span></div>
+        <div className="text-base leading-8 text-gray-800" style={{whiteSpace:'pre-wrap'}}>
+          {blocks.map((b,i)=>(<span key={i} className={dtC(b.dt)+' tt'} onMouseEnter={()=>setHovered(i)} onMouseLeave={()=>setHovered(null)}>{b.text}{hovered===i&&<span className="tt-box"><strong>{dtL(b.dt)}</strong><br/>근거: {b.evidence}<br/>구간: {b.text.length}자 ({b.start}~{b.end})</span>}</span>))}
         </div>
-      )}
-
-      {/* 블록 상세 */}
+      </div>
+      {Object.keys(pgStats).length>0&&<div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+        <div className="text-sm font-semibold text-gray-600 mb-3">붙여넣기 이벤트별 수정 내역</div>
+        <div className="space-y-3">{Object.entries(pgStats).map(([id,gs])=>(<div key={id} className="border rounded-lg p-3"><div className="flex items-center gap-2 mb-2"><span className={gs.wasEdited?'bg-orange-100 text-orange-800 text-xs px-2 py-1 rounded-full font-semibold':'bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full font-semibold'}>{gs.wasEdited?'수정됨':'원본 유지'}</span><span className="text-xs text-gray-400">원본 {gs.originalLen}자</span></div><div className="text-xs text-gray-500 truncate">원본: "{gs.originalText.slice(0,60)}{gs.originalText.length>60?'...':''}"</div>{gs.wasEdited&&<div className="text-xs text-gray-600 mt-1">잔존: <strong>{gs.remaining}자</strong>{gs.deleted>0&&<span className="text-red-500 ml-2">삭제: {gs.deleted}자</span>}{gs.inserted>0&&<span className="text-blue-500 ml-2">추가: {gs.inserted}자</span>}</div>}</div>))}</div>
+      </div>}
       <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
         <div className="text-sm font-semibold text-gray-600 mb-3">블록별 상세 분석</div>
-        <div className="space-y-2 max-h-64 overflow-y-auto">
-          {blocks.map((b, i) => {
-            const tr = b.text.length > 40 ? b.text.slice(0,40)+'...' : b.text;
-            return (
-              <div key={i} className="flex items-start gap-3 p-2 rounded hover:bg-gray-50">
-                <span className={dtBadge(b.dt)+' text-xs px-2 py-1 rounded-full font-semibold whitespace-nowrap'}>{dtLabel(b.dt)}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm text-gray-700 truncate">{tr}</div>
-                  <div className="text-xs text-gray-400 mt-1">{b.evidence}</div>
-                </div>
-                <span className="text-xs text-gray-400 whitespace-nowrap">{b.text.length}자</span>
-              </div>
-            );
-          })}
-        </div>
+        <div className="space-y-2 max-h-64 overflow-y-auto">{blocks.map((b,i)=>{const tr=b.text.length>40?b.text.slice(0,40)+'...':b.text;return(<div key={i} className="flex items-start gap-3 p-2 rounded hover:bg-gray-50"><span className={dtB(b.dt)+' text-xs px-2 py-1 rounded-full font-semibold whitespace-nowrap'}>{dtL(b.dt)}</span><div className="flex-1 min-w-0"><div className="text-sm text-gray-700 truncate">{tr}</div><div className="text-xs text-gray-400 mt-1">{b.evidence}</div></div><span className="text-xs text-gray-400 whitespace-nowrap">{b.text.length}자</span></div>)})}</div>
       </div>
-
-      <div className="text-center flex gap-3 justify-center">
-        <button onClick={()=>setShowReplay(true)} style={{padding:'12px 32px',background:'#059669',color:'#ffffff',fontWeight:'700',fontSize:'15px',border:'none',borderRadius:'8px',cursor:'pointer',boxShadow:'0 4px 12px rgba(5,150,105,0.4)',transition:'background .2s'}} onMouseOver={e=>e.currentTarget.style.background='#047857'} onMouseOut={e=>e.currentTarget.style.background='#059669'}>▶ 작성과정 재생</button>
-        <button onClick={onBack} style={{padding:'12px 32px',background:'#4f46e5',color:'#ffffff',fontWeight:'700',fontSize:'15px',border:'none',borderRadius:'8px',cursor:'pointer',boxShadow:'0 4px 12px rgba(79,70,229,0.4)',transition:'background .2s'}} onMouseOver={e=>e.currentTarget.style.background='#4338ca'} onMouseOut={e=>e.currentTarget.style.background='#4f46e5'}>에디터로 돌아가기</button>
-      </div>
-      {showReplay && <Replay blocks={blocks} onClose={()=>setShowReplay(false)} />}
-    </div>
-  );
-}
-
-function Replay({ blocks, onClose }) {
-  const [step, setStep] = useState(0);   // 현재까지 표시할 블록 인덱스
-  const [charStep, setCharStep] = useState(0); // 현재 블록 내 표시 글자 수
-  const [running, setRunning] = useState(false);
-  const timerRef = useRef(null);
-
-  const dtClass = dt => ({typing:'hl-typing','paste-clean':'hl-paste','paste-edited':'hl-paste-edited','insert-in-paste':'hl-insert-in-paste',citation:'hl-citation'})[dt]||'';
-  const dtLabel = dt => ({typing:'타이핑','paste-clean':'붙여넣기','paste-edited':'수정된 복붙','insert-in-paste':'복붙 내 입력',citation:'인용'})[dt]||dt;
-
-  const tick = () => {
-    setCharStep(prev => {
-      const curBlock = blocks[step] || null;
-      if (!curBlock) { setRunning(false); return prev; }
-      const isTyping = curBlock.dt === 'typing' || curBlock.dt === 'insert-in-paste';
-      const nextChar = prev + (isTyping ? 1 : curBlock.text.length);
-      if (nextChar >= curBlock.text.length) {
-        setStep(s => {
-          const ns = s + 1;
-          if (ns >= blocks.length) setRunning(false);
-          return ns;
-        });
-        return 0;
-      }
-      return nextChar;
-    });
-  };
-
-  useEffect(() => {
-    if (!running) { clearInterval(timerRef.current); return; }
-    const curBlock = blocks[step];
-    if (!curBlock) { setRunning(false); return; }
-    const isTyping = curBlock.dt === 'typing' || curBlock.dt === 'insert-in-paste';
-    timerRef.current = setInterval(tick, isTyping ? 40 : 300);
-    return () => clearInterval(timerRef.current);
-  }, [running, step]);
-
-  const handleStart = () => { setStep(0); setCharStep(0); setRunning(true); };
-  const handleStop = () => setRunning(false);
-
-  // 렌더링: step 이전 블록은 전체 표시, 현재 블록은 charStep까지만
-  const rendered = blocks.slice(0, step).map((b, i) => (
-    <span key={i} className={dtClass(b.dt)} title={dtLabel(b.dt)}>{b.text}</span>
-  ));
-  if (step < blocks.length) {
-    const cur = blocks[step];
-    rendered.push(
-      <span key="cur" className={dtClass(cur.dt)} title={dtLabel(cur.dt)}>{cur.text.slice(0, charStep)}<span style={{borderLeft:'2px solid #6366f1',animation:'blink 1s step-end infinite'}}></span></span>
-    );
-  }
-
-  return (
-    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:100}} onClick={e=>{if(e.target===e.currentTarget)onClose()}}>
-      <div style={{background:'#fff',borderRadius:'16px',padding:'32px',width:'90%',maxWidth:'700px',maxHeight:'80vh',display:'flex',flexDirection:'column',gap:'16px'}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <h3 style={{margin:0,fontSize:'18px',fontWeight:'700',color:'#1f2937'}}>작성과정 재생</h3>
-          <button onClick={onClose} style={{background:'none',border:'none',fontSize:'22px',cursor:'pointer',color:'#6b7280',lineHeight:1}}>✕</button>
-        </div>
-        <div style={{display:'flex',gap:'8px'}}>
-          <button onClick={handleStart} style={{padding:'8px 20px',background:'#059669',color:'#fff',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'14px',cursor:'pointer'}}>⏮ 처음부터</button>
-          {running
-            ? <button onClick={handleStop} style={{padding:'8px 20px',background:'#dc2626',color:'#fff',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'14px',cursor:'pointer'}}>⏸ 일시정지</button>
-            : <button onClick={()=>setRunning(true)} disabled={step>=blocks.length} style={{padding:'8px 20px',background: step>=blocks.length?'#9ca3af':'#2563eb',color:'#fff',border:'none',borderRadius:'8px',fontWeight:'700',fontSize:'14px',cursor: step>=blocks.length?'not-allowed':'pointer'}}>▶ 재생</button>
-          }
-        </div>
-        <div style={{flex:1,overflowY:'auto',padding:'16px',background:'#f9fafb',borderRadius:'8px',minHeight:'200px',fontSize:'15px',lineHeight:'2',whiteSpace:'pre-wrap',wordBreak:'break-all'}}>
-          {rendered.length > 0 ? rendered : <span style={{color:'#9ca3af'}}>재생 버튼을 눌러 시작하세요</span>}
-        </div>
-        <div style={{display:'flex',gap:'12px',flexWrap:'wrap',fontSize:'12px',color:'#6b7280'}}>
-          <span><span style={{display:'inline-block',width:'10px',height:'10px',borderRadius:'50%',background:'#22c55e',marginRight:'4px'}}></span>타이핑</span>
-          <span><span style={{display:'inline-block',width:'10px',height:'10px',borderRadius:'50%',background:'#ef4444',marginRight:'4px'}}></span>붙여넣기</span>
-          <span><span style={{display:'inline-block',width:'10px',height:'10px',borderRadius:'50%',background:'#f97316',marginRight:'4px'}}></span>수정된 복붙</span>
-          <span><span style={{display:'inline-block',width:'10px',height:'10px',borderRadius:'50%',background:'#3b82f6',marginRight:'4px'}}></span>복붙 내 입력</span>
-          <span><span style={{display:'inline-block',width:'10px',height:'10px',borderRadius:'50%',background:'#eab308',marginRight:'4px'}}></span>인용</span>
-        </div>
+      <div className="flex gap-3 justify-center">
+        {hasOpLog&&<button onClick={onReplay} className="px-6 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors shadow-md">작성 과정 재생</button>}
+        <button onClick={onBack} className="px-6 py-3 bg-indigo-100 text-indigo-700 rounded-lg font-semibold hover:bg-indigo-200 transition-colors">에디터로 돌아가기</button>
       </div>
     </div>
   );
 }
 
-ReactDOM.render(<App/>, document.getElementById('root'));
+ReactDOM.render(<App/>,document.getElementById('root'));
 </script>
 </body>
 </html>
