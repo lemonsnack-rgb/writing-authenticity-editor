@@ -214,8 +214,26 @@ function runAnalysis(){
   return{blocks,counts,total,mechScore,behScore,finalScore,grade:fGrade,gradeLabel:fLabel,avgCPM,deleteCount:S.deleteCount,pgStats:pgS,pasteEditInserts:S.pasteEditInserts,pasteDeleteCount:S.pasteDeleteCount,heuristics};
 }
 
-/* ═══ 5. 재생 플레이어 컴포넌트 ═══ */
-function ReplayPlayer({opLog,onBack}){
+/* ═══ 5. 재생 모달 ═══ */
+function ReplayModal({opLog,onClose}){
+  // ESC 키로 닫기
+  useEffect(()=>{
+    const handler=e=>{if(e.key==='Escape')onClose()};
+    window.addEventListener('keydown',handler);
+    return()=>window.removeEventListener('keydown',handler);
+  },[onClose]);
+  return(
+    <div style={{position:'fixed',inset:0,zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}}>
+      <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.5)'}} onClick={onClose}></div>
+      <div style={{position:'relative',width:'90%',maxWidth:'800px',maxHeight:'90vh',overflow:'auto',background:'var(--bg-color,#f3f4f6)',borderRadius:'16px',boxShadow:'0 25px 50px rgba(0,0,0,0.25)',padding:'24px'}}>
+        <button onClick={onClose} style={{position:'absolute',top:'12px',right:'16px',background:'none',border:'none',fontSize:'24px',cursor:'pointer',color:'var(--text-secondary,#6b7280)',lineHeight:1}}>✕</button>
+        <ReplayPlayer opLog={opLog} onClose={onClose} />
+      </div>
+    </div>
+  );
+}
+
+function ReplayPlayer({opLog,onClose}){
   const [playing,setPlaying]=useState(false);
   const [speed,setSpeed]=useState(4);
   const [currentIdx,setCurrentIdx]=useState(0);
@@ -363,7 +381,7 @@ function ReplayPlayer({opLog,onBack}){
         </div>
       </div>
       <div className="text-center">
-        <button onClick={onBack} className="px-6 py-2 bg-indigo-100 text-indigo-700 rounded-lg font-semibold hover:bg-indigo-200 transition-colors">돌아가기</button>
+        <button onClick={onClose} className="px-6 py-2 bg-indigo-100 text-indigo-700 rounded-lg font-semibold hover:bg-indigo-200 transition-colors">닫기</button>
       </div>
     </div>
   );
@@ -421,7 +439,8 @@ function Root(){
 /* ═══ 8. 메인 앱 ═══ */
 function App(){
   const[,tick]=useState(0);
-  const[view,setView]=useState('editor'); // 'editor'|'cert'|'replay'
+  const[view,setView]=useState('editor'); // 'editor'|'cert'
+  const[showReplay,setShowReplay]=useState(false);
   const[result,setResult]=useState(null);
   const editorRef=useRef(null);
 
@@ -429,7 +448,6 @@ function App(){
   useEffect(()=>{if(view==='editor')attachEvents(editorRef.current)},[view]);
 
   const handleAnalyze=()=>{const r=runAnalysis();if(r){setResult(r);setView('cert')}};
-  const handleReplay=()=>{if(S.opLog.length>0)setView('replay')};  // 인증서에서만 사용
   const handleReset=()=>{
     S.charMeta=[];S.prevText='';S.pasteEvents=[];S.nextPasteId=1;S.deleteCount=0;S.pasteDeleteCount=0;S.pasteEditInserts=0;S.inputIntervals=[];S.lastInputTime=null;S.opLog=[];S.startTime=null;
     setView('editor');setResult(null);
@@ -479,8 +497,8 @@ function App(){
         </div>
       )}
 
-      {view==='cert'&&result&&<Certificate result={result} onBack={()=>{if(window.confirm('에디터로 돌아가면 현재 작성 내역이 초기화됩니다. 계속하시겠습니까?'))handleReset()}} onReplay={()=>setView('replay')} hasOpLog={S.opLog.length>0} />}
-      {view==='replay'&&<ReplayPlayer opLog={S.opLog} onBack={()=>{if(window.confirm('에디터로 돌아가면 현재 작성 내역이 초기화됩니다. 계속하시겠습니까?'))handleReset()}} />}
+      {view==='cert'&&result&&<Certificate result={result} onBack={()=>{if(window.confirm('에디터로 돌아가면 현재 작성 내역이 초기화됩니다. 계속하시겠습니까?'))handleReset()}} onReplay={()=>setShowReplay(true)} hasOpLog={S.opLog.length>0} />}
+      {showReplay&&<ReplayModal opLog={S.opLog} onClose={()=>setShowReplay(false)} />}
     </div>
   );
 }
