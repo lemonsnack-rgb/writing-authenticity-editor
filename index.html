@@ -462,8 +462,8 @@ function App(){
         </div>
       )}
 
-      {view==='cert'&&result&&<Certificate result={result} onBack={()=>setView('editor')} onReplay={()=>setView('replay')} hasOpLog={S.opLog.length>0} />}
-      {view==='replay'&&<ReplayPlayer opLog={S.opLog} onBack={()=>setView('editor')} />}
+      {view==='cert'&&result&&<Certificate result={result} onBack={()=>{if(window.confirm('에디터로 돌아가면 현재 작성 내역이 초기화됩니다. 계속하시겠습니까?'))handleReset()}} onReplay={()=>setView('replay')} hasOpLog={S.opLog.length>0} />}
+      {view==='replay'&&<ReplayPlayer opLog={S.opLog} onBack={()=>{if(window.confirm('에디터로 돌아가면 현재 작성 내역이 초기화됩니다. 계속하시겠습니까?'))handleReset()}} />}
     </div>
   );
 }
