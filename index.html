@@ -42,6 +42,25 @@ body{background:#f3f4f6;margin:0;font-family:'Segoe UI',sans-serif}
 .progress-track{flex:1;height:6px;background:#e5e7eb;border-radius:3px;cursor:pointer;position:relative}
 .progress-fill{height:100%;background:#6366f1;border-radius:3px;transition:width .1s linear}
 .op-tag{display:inline-block;font-size:10px;padding:1px 6px;border-radius:4px;margin-left:4px;font-weight:600}
+/* 로그인 */
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#eef2ff 0%,#f0fdf4 100%)}
+.login-card{background:#fff;border-radius:16px;padding:48px 40px;width:100%;max-width:400px;box-shadow:0 8px 32px rgba(99,102,241,.12);animation:fadeIn .4s ease-out}
+.login-logo{width:56px;height:56px;background:linear-gradient(135deg,#6366f1,#4f46e5);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px}
+.login-input{width:100%;padding:12px 16px;border:2px solid #e5e7eb;border-radius:8px;font-size:15px;outline:none;transition:border-color .2s;box-sizing:border-box}
+.login-input:focus{border-color:#6366f1;box-shadow:0 0 0 3px rgba(99,102,241,.1)}
+.login-btn{width:100%;padding:13px;background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;border:none;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer;transition:opacity .2s;margin-top:8px}
+.login-btn:hover{opacity:.9}
+.login-btn:active{opacity:.8}
+.login-err{color:#ef4444;font-size:13px;text-align:center;margin-top:8px;min-height:20px}
+.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#eef2ff 0%,#f0fdf4 100%)}
+.login-card{background:#fff;border-radius:16px;padding:48px 40px;width:100%;max-width:400px;box-shadow:0 8px 32px rgba(99,102,241,.12);animation:fadeIn .4s ease-out}
+.login-logo{width:56px;height:56px;background:linear-gradient(135deg,#6366f1,#4f46e5);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px}
+.login-input{width:100%;padding:12px 16px;border:2px solid #e5e7eb;border-radius:8px;font-size:15px;outline:none;transition:border-color .2s;box-sizing:border-box}
+.login-input:focus{border-color:#6366f1;box-shadow:0 0 0 3px rgba(99,102,241,.1)}
+.login-btn{width:100%;padding:13px;background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;border:none;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer;transition:opacity .2s;margin-top:8px}
+.login-btn:hover{opacity:.9}
+.login-btn:active{opacity:.8}
+.login-err{color:#ef4444;font-size:13px;text-align:center;margin-top:8px;min-height:20px}
 </style>
 </head>
 <body>
@@ -335,7 +354,56 @@ function ReplayPlayer({opLog,onBack}){
   );
 }
 
-/* ═══ 6. 메인 앱 ═══ */
+/* ═══ 6. 로그인 ═══ */
+function LoginScreen({onLogin}){
+  const[user,setUser]=useState("");
+  const[pass,setPass]=useState("");
+  const[err,setErr]=useState("");
+  const[loading,setLoading]=useState(false);
+  function handleSubmit(e){
+    e.preventDefault();
+    setLoading(true);
+    setTimeout(()=>{
+      if(user==="muhayu"&&pass==="muhayu2026!"){
+        sessionStorage.setItem("wae_auth","1");
+        onLogin();
+      }else{
+        setErr("아이디 또는 비밀번호가 올바르지 않습니다.");
+        setLoading(false);
+      }
+    },400);
+  }
+  return(
+    <div className="login-wrap">
+      <div className="login-card">
+        <div className="login-logo"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></div>
+        <h2 style={{textAlign:"center",fontWeight:700,fontSize:22,color:"#1e293b",marginBottom:6}}>작성 진정성 에디터</h2>
+        <p style={{textAlign:"center",color:"#64748b",fontSize:14,marginBottom:28}}>계속하려면 로그인하세요</p>
+        <form onSubmit={handleSubmit}>
+          <div style={{marginBottom:14}}>
+            <label style={{display:"block",fontSize:13,fontWeight:600,color:"#374151",marginBottom:6}}>아이디</label>
+            <input className="login-input" type="text" value={user} onChange={e=>setUser(e.target.value)} placeholder="아이디 입력" autoFocus required/>
+          </div>
+          <div style={{marginBottom:6}}>
+            <label style={{display:"block",fontSize:13,fontWeight:600,color:"#374151",marginBottom:6}}>비밀번호</label>
+            <input className="login-input" type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="비밀번호 입력" required/>
+          </div>
+          <div className="login-err">{err}</div>
+          <button className="login-btn" type="submit" disabled={loading}>{loading?"확인 중...":"로그인"}</button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* ═══ 7. 루트 ═══ */
+function Root(){
+  const[authed,setAuthed]=useState(()=>sessionStorage.getItem("wae_auth")==="1");
+  if(!authed)return <LoginScreen onLogin={()=>setAuthed(true)}/>;
+  return <App/>;
+}
+
+/* ═══ 8. 메인 앱 ═══ */
 function App(){
   const[,tick]=useState(0);
   const[view,setView]=useState('editor'); // 'editor'|'cert'|'replay'
@@ -511,7 +579,7 @@ function Certificate({result,onBack,onReplay,hasOpLog}){
   );
 }
 
-ReactDOM.render(<App/>,document.getElementById('root'));
+ReactDOM.render(<Root/>,document.getElementById('root'));
 </script>
 </body>
 </html>
