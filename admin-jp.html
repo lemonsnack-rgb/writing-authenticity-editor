@@ -7,7 +7,7 @@
 <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 <style>
 *{box-sizing:border-box}
-body{background:#f3f4f6;margin:0;font-family:'Segoe UI',sans-serif}
+body{background:#f3f4f6;margin:0;font-family:'Segoe UI','Hiragino Sans',sans-serif}
 input[type=number]{width:80px;padding:4px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:14px;text-align:right}
 input[type=number]:focus{outline:none;border-color:#6366f1;box-shadow:0 0 0 2px rgba(99,102,241,.2)}
 .section{background:#fff;border-radius:12px;padding:20px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
@@ -27,16 +27,16 @@ input[type=number]:focus{outline:none;border-color:#6366f1;box-shadow:0 0 0 2px 
   <div id="app"></div>
 </div>
 <script>
-// ── config 로드 (index.html과 동일한 구조) ──
+// ── 設定読み込み (index-jp.htmlと同一構造) ──
 const DEFAULT_CONFIG = {
   mechWeights:{typing:1.0,'insert-in-paste':0.7,citation:0.5,'paste-edited':0.3,'paste-clean':0.0},
   behaviorWeights:{nonlinear:0.4,thinking:0.35,editQuality:0.25},
   finalScoreRatio:{mechanical:0.5,behavioral:0.5},
   nonlinear:{scaleFactor:500},
   thinking:{minPauseMs:2000,maxPauseMs:15000,lookAheadOps:3,minDeleteForContent:3,minInsertForContent:2,pauseWeight:3000,scoreScale:200},
-  editQuality:{typoMaxLength:2,contentMinDelete:2,contentMinInsert:2},
+  editQuality:{typoMaxLength:1,contentMinDelete:2,contentMinInsert:2},
   grades:{excellent:70,normal:40},
-  citation:{contextRange:30,patterns:['["""]','https?:\\/\\/','www\\.','출처','참고','인용','참조','source','ref','cite','\\[\\d+\\]','\\(.*\\d{4}\\)']},
+  citation:{contextRange:30,patterns:['[「」『』"""]','https?:\\/\\/','www\\.','参考','引用','出典','出所','source','ref','cite','\\[\\d+\\]','\\(.*\\d{4}\\)']},
   replay:{minDelayMs:10,maxDelayMs:500,speeds:[1,2,4,8,16]},
   input:{maxIntervalMs:10000},
 };
@@ -46,74 +46,74 @@ function saveConfig(c){localStorage.setItem('authenticity-editor-config-jp',JSON
 
 let config = loadConfig();
 
-// ── UI 렌더링 ──
+// ── UIレンダリング ──
 const sections = [
   {
-    title: '기계적 분석 — 글자 유입 경로별 가중치',
-    desc: '각 유형의 글자가 점수에 기여하는 비율 (0.0 ~ 1.0)',
+    title: '機械的分析 — 文字流入経路別加重値',
+    desc: '各タイプの文字がスコアに寄与する比率（0.0〜1.0）',
     fields: [
-      { path: 'mechWeights.typing', label: '직접 타이핑', desc: '키보드로 직접 입력', step: 0.1 },
-      { path: 'mechWeights.insert-in-paste', label: '복붙 내 삽입', desc: '붙여넣기 영역 안에서 직접 입력', step: 0.1 },
-      { path: 'mechWeights.citation', label: '인용 붙여넣기', desc: '출처 표기가 있는 붙여넣기', step: 0.1 },
-      { path: 'mechWeights.paste-edited', label: '수정된 복붙', desc: '붙여넣기 후 수정된 블록', step: 0.1 },
-      { path: 'mechWeights.paste-clean', label: '단순 붙여넣기', desc: '수정 없이 그대로 남은 붙여넣기', step: 0.1 },
+      { path: 'mechWeights.typing', label: '直接タイピング', desc: 'キーボードで直接入力', step: 0.1 },
+      { path: 'mechWeights.insert-in-paste', label: '貼付内挿入', desc: '貼り付け領域内で直接入力', step: 0.1 },
+      { path: 'mechWeights.citation', label: '引用貼り付け', desc: '出典表記のある貼り付け', step: 0.1 },
+      { path: 'mechWeights.paste-edited', label: '修正済み貼付', desc: '貼り付け後に修正されたブロック', step: 0.1 },
+      { path: 'mechWeights.paste-clean', label: '単純貼り付け', desc: '修正なしでそのまま残った貼り付け', step: 0.1 },
     ]
   },
   {
-    title: '행동 분석 — 시그널별 가중치',
-    desc: '합이 1.0이 되어야 합니다',
+    title: '行動分析 — シグナル別加重値',
+    desc: '合計が1.0になるようにしてください',
     fields: [
-      { path: 'behaviorWeights.nonlinear', label: '비선형 편집', desc: '커서 역방향 이동 빈도', step: 0.05 },
-      { path: 'behaviorWeights.thinking', label: '사고 정지', desc: '유효 사고 정지 횟수', step: 0.05 },
-      { path: 'behaviorWeights.editQuality', label: '수정 패턴 질', desc: '내용 수정 비율', step: 0.05 },
+      { path: 'behaviorWeights.nonlinear', label: '非線形編集', desc: 'カーソル逆方向移動の頻度', step: 0.05 },
+      { path: 'behaviorWeights.thinking', label: '思考停止', desc: '有効思考停止の回数', step: 0.05 },
+      { path: 'behaviorWeights.editQuality', label: '修正パターン質', desc: '内容修正の比率', step: 0.05 },
     ]
   },
   {
-    title: '종합 점수 — 결합 비율',
-    desc: '기계적/행동 점수의 결합 비율 (합 1.0)',
+    title: '総合スコア — 結合比率',
+    desc: '機械的/行動スコアの結合比率（合計1.0）',
     fields: [
-      { path: 'finalScoreRatio.mechanical', label: '기계적 분석 비율', step: 0.1 },
-      { path: 'finalScoreRatio.behavioral', label: '행동 분석 비율', step: 0.1 },
+      { path: 'finalScoreRatio.mechanical', label: '機械的分析の比率', step: 0.1 },
+      { path: 'finalScoreRatio.behavioral', label: '行動分析の比率', step: 0.1 },
     ]
   },
   {
-    title: '사고 정지 — 임계값',
+    title: '思考停止 — 閾値',
     fields: [
-      { path: 'thinking.minPauseMs', label: '최소 정지 시간 (ms)', desc: '이 이상 멈추면 사고 정지 후보', step: 500 },
-      { path: 'thinking.maxPauseMs', label: '최대 정지 시간 (ms)', desc: '이 이상이면 이탈로 판단', step: 1000 },
-      { path: 'thinking.lookAheadOps', label: '검사 오퍼레이션 수', desc: '멈춤 후 이 개수만큼 후속 행동 검사', step: 1 },
-      { path: 'thinking.minDeleteForContent', label: '내용 삭제 최소 길이', desc: '이 이상 삭제해야 내용 수정으로 판단', step: 1 },
-      { path: 'thinking.minInsertForContent', label: '내용 삽입 최소 길이', desc: '이 이상 삽입해야 내용 수정으로 판단', step: 1 },
+      { path: 'thinking.minPauseMs', label: '最小停止時間（ms）', desc: 'これ以上止まると思考停止候補', step: 500 },
+      { path: 'thinking.maxPauseMs', label: '最大停止時間（ms）', desc: 'これ以上は離席と判断', step: 1000 },
+      { path: 'thinking.lookAheadOps', label: '検査オペレーション数', desc: '停止後この数だけ後続行動を検査', step: 1 },
+      { path: 'thinking.minDeleteForContent', label: '内容削除最小長', desc: 'これ以上削除で内容修正と判断', step: 1 },
+      { path: 'thinking.minInsertForContent', label: '内容挿入最小長', desc: 'これ以上挿入で内容修正と判断', step: 1 },
     ]
   },
   {
-    title: '수정 패턴 질 — 임계값',
+    title: '修正パターン質 — 閾値',
     fields: [
-      { path: 'editQuality.typoMaxLength', label: '오타 최대 길이', desc: '이 이하 삭제+삽입은 오타 수정으로 분류', step: 1 },
-      { path: 'editQuality.contentMinDelete', label: '내용 수정 최소 삭제', step: 1 },
-      { path: 'editQuality.contentMinInsert', label: '내용 수정 최소 삽입', step: 1 },
+      { path: 'editQuality.typoMaxLength', label: '誤字最大長', desc: 'これ以下の削除+挿入は誤字修正に分類', step: 1 },
+      { path: 'editQuality.contentMinDelete', label: '内容修正最小削除', step: 1 },
+      { path: 'editQuality.contentMinInsert', label: '内容修正最小挿入', step: 1 },
     ]
   },
   {
-    title: '등급 커트라인',
+    title: '等級カットライン',
     fields: [
-      { path: 'grades.excellent', label: '우수 최소 점수', step: 5 },
-      { path: 'grades.normal', label: '보통 최소 점수', step: 5 },
+      { path: 'grades.excellent', label: '優秀の最低点', step: 5 },
+      { path: 'grades.normal', label: '普通の最低点', step: 5 },
     ]
   },
   {
-    title: '인용 감지',
+    title: '引用検出',
     fields: [
-      { path: 'citation.contextRange', label: '주변 검색 범위 (글자 수)', step: 5 },
+      { path: 'citation.contextRange', label: '周辺検索範囲（文字数）', step: 5 },
     ]
   },
   {
-    title: '기타',
+    title: 'その他',
     fields: [
-      { path: 'nonlinear.scaleFactor', label: '비선형 스케일 팩터', step: 50 },
-      { path: 'input.maxIntervalMs', label: '입력 간격 최대 (ms)', step: 1000 },
-      { path: 'replay.minDelayMs', label: '재생 최소 딜레이 (ms)', step: 5 },
-      { path: 'replay.maxDelayMs', label: '재생 최대 딜레이 (ms)', step: 50 },
+      { path: 'nonlinear.scaleFactor', label: '非線形スケールファクター', step: 50 },
+      { path: 'input.maxIntervalMs', label: '入力間隔最大（ms）', step: 1000 },
+      { path: 'replay.minDelayMs', label: '再生最小ディレイ（ms）', step: 5 },
+      { path: 'replay.maxDelayMs', label: '再生最大ディレイ（ms）', step: 50 },
     ]
   },
 ];
@@ -148,16 +148,16 @@ function render() {
     html += '</div>';
   });
 
-  // 버튼
+  // ボタン
   html += '<div class="flex gap-3 justify-center mt-6 mb-4">';
-  html += '<button id="btn-save" class="px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-colors shadow-md">저장</button>';
-  html += '<button id="btn-reset" class="px-6 py-3 bg-red-100 text-red-700 rounded-lg font-semibold hover:bg-red-200 transition-colors">기본값 복원</button>';
+  html += '<button id="btn-save" class="px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-colors shadow-md">保存</button>';
+  html += '<button id="btn-reset" class="px-6 py-3 bg-red-100 text-red-700 rounded-lg font-semibold hover:bg-red-200 transition-colors">デフォルトに戻す</button>';
   html += '</div>';
-  html += '<p id="msg" class="text-center text-sm text-green-600 hidden">저장되었습니다. 에디터를 새로고침하면 적용됩니다.</p>';
+  html += '<p id="msg" class="text-center text-sm text-green-600 hidden">保存されました。エディタを再読み込みすると適用されます。</p>';
 
   app.innerHTML = html;
 
-  // 이벤트
+  // イベント
   document.querySelectorAll('input[data-path]').forEach(input => {
     input.addEventListener('change', () => {
       setVal(config, input.dataset.path, parseFloat(input.value));
@@ -171,7 +171,7 @@ function render() {
   });
 
   document.getElementById('btn-reset').addEventListener('click', () => {
-    if (confirm('모든 설정을 기본값으로 복원하시겠습니까?')) {
+    if (confirm('すべての設定をデフォルトに戻しますか？')) {
       localStorage.removeItem('authenticity-editor-config-jp');
       config = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
       render();
