@@ -340,7 +340,6 @@ function App(){
       <header className="text-center mb-6">
         <h1 className="text-3xl font-bold text-gray-800">작성 진정성 인증 에디터</h1>
         <p className="text-gray-500 mt-1 text-sm">타이핑·붙여넣기·수정을 구분하여 작성 진정성을 분석합니다</p>
-        <a href="admin.html" target="_blank" className="text-xs text-gray-400 hover:text-indigo-500 transition-colors">관리자 설정</a>
       </header>
       {view==='editor'&&(
         <div className="fade-in">
@@ -369,6 +368,7 @@ function App(){
             <button onClick={handleAnalyze} disabled={n===0} className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors shadow-md">진정성 분석</button>
             <button onClick={handleReset} className="px-6 py-3 bg-red-100 text-red-700 rounded-lg font-semibold hover:bg-red-200 transition-colors">초기화</button>
           </div>
+          <div className="text-right mt-3"><a href="admin.html" target="_blank" className="text-xs text-gray-400 hover:text-indigo-500 transition-colors">관리자 설정 →</a></div>
         </div>
       )}
       {view==='cert'&&result&&<Certificate result={result} onBack={()=>{if(window.confirm('에디터로 돌아가면 현재 작성 내역이 초기화됩니다. 계속하시겠습니까?'))handleReset()}} onReplay={()=>setShowReplay(true)} hasOpLog={S.opLog.length>0} />}

@@ -30,15 +30,6 @@ input[type=number]:focus{outline:none;border-color:#6366f1;box-shadow:0 0 0 2px 
   </div>
 </div>
 <div id="main-content" style="display:none">
-<div class="max-w-2xl mx-auto p-6">
-  <header class="text-center mb-6">
-    <h1 class="text-2xl font-bold text-gray-800">관리자 설정</h1>
-    <p class="text-gray-500 text-sm mt-1">분석 임계값, 가중치, 등급 기준을 조정합니다</p>
-    <a href="index.html" class="text-xs text-indigo-500 hover:text-indigo-700">← 에디터로 돌아가기</a>
-  </header>
-  <div id="app"></div>
-</div>
-</div>
 <script>
 (function(){
   var _h=function(s){var h=0;for(var i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0}return h};
@@ -56,6 +47,14 @@ input[type=number]:focus{outline:none;border-color:#6366f1;box-shadow:0 0 0 2px 
   document.getElementById('login-id').addEventListener('keydown',function(e){if(e.key==='Enter')document.getElementById('login-pw').focus()});
 })();
 </script>
+<div class="max-w-2xl mx-auto p-6">
+  <header class="text-center mb-6">
+    <h1 class="text-2xl font-bold text-gray-800">관리자 설정</h1>
+    <p class="text-gray-500 text-sm mt-1">분석 임계값, 가중치, 등급 기준을 조정합니다</p>
+    <a href="index.html" class="text-xs text-indigo-500 hover:text-indigo-700">← 에디터로 돌아가기</a>
+  </header>
+  <div id="app"></div>
+</div>
 <script>
 // ── config 로드 (index.html과 동일한 구조) ──
 const DEFAULT_CONFIG = {
@@ -211,5 +210,5 @@ function render() {
 
 render();
 </script>
-</body>
+</div></body>
 </html>
