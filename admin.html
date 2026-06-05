@@ -18,35 +18,6 @@ input[type=number]:focus{outline:none;border-color:#6366f1;box-shadow:0 0 0 2px 
 </style>
 </head>
 <body>
-<!-- ═══ 로그인 게이트 ═══ -->
-<div id="login-gate" style="display:flex;align-items:center;justify-content:center;min-height:100vh">
-  <div style="background:#fff;padding:32px;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.1);width:340px;text-align:center">
-    <h2 style="font-size:20px;font-weight:700;color:#1f2937;margin:0 0 4px">관리자 설정</h2>
-    <p style="font-size:13px;color:#9ca3af;margin:0 0 24px">접속하려면 로그인하세요</p>
-    <input id="login-id" type="text" placeholder="아이디" style="width:100%;padding:10px 14px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;margin-bottom:10px;outline:none" />
-    <input id="login-pw" type="password" placeholder="비밀번호" style="width:100%;padding:10px 14px;border:1.5px solid #d1d5db;border-radius:8px;font-size:14px;margin-bottom:16px;outline:none" />
-    <p id="login-err" style="font-size:12px;color:#ef4444;margin:0 0 12px;display:none">아이디 또는 비밀번호가 올바르지 않습니다.</p>
-    <button id="login-btn" style="width:100%;padding:12px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer">로그인</button>
-  </div>
-</div>
-<div id="main-content" style="display:none">
-<script>
-(function(){
-  var _h=function(s){var h=0;for(var i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0}return h};
-  var _u=-1063142531,_p=1851790850;
-  function check(){
-    var id=document.getElementById('login-id').value;
-    var pw=document.getElementById('login-pw').value;
-    if(_h(id)===_u&&_h(pw)===_p){sessionStorage.setItem('auth','1');show()}
-    else{document.getElementById('login-err').style.display='block'}
-  }
-  function show(){document.getElementById('login-gate').style.display='none';document.getElementById('main-content').style.display='block'}
-  if(sessionStorage.getItem('auth')==='1')show();
-  document.getElementById('login-btn').addEventListener('click',check);
-  document.getElementById('login-pw').addEventListener('keydown',function(e){if(e.key==='Enter')check()});
-  document.getElementById('login-id').addEventListener('keydown',function(e){if(e.key==='Enter')document.getElementById('login-pw').focus()});
-})();
-</script>
 <div class="max-w-2xl mx-auto p-6">
   <header class="text-center mb-6">
     <h1 class="text-2xl font-bold text-gray-800">관리자 설정</h1>
@@ -210,5 +181,5 @@ function render() {
 
 render();
 </script>
-</div></body>
+</body>
 </html>
